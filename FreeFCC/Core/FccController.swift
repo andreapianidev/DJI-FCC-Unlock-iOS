@@ -123,6 +123,9 @@ final class FccController {
     private let ackHits = Protected(0)
     private let preferredPath = Protected(CommandPath(sender: FccController.senderCapture, framing: .rclink))
     private let repeatCancelled = Protected(true)
+    /// Interfaces present before the cable went in, so the diff after it does
+    /// is unambiguous.
+    private let baselineInterfaces = Protected(Set<String>())
 
     private var repeatTimer: DispatchSourceTimer?
     private var serialPollTask: Task<Void, Never>?
@@ -141,6 +144,7 @@ final class FccController {
             "Declared protocols: \(ExternalAccessoryTransport.declaredProtocols.joined(separator: ", "))"
         ])
         EAAccessoryManager.shared().registerForLocalNotifications()
+        baselineInterfaces.value = Set(NetworkProbe.interfaces().map(\.summary))
         loadProfile()
         refreshAccessories()
         status = .disconnected
@@ -168,7 +172,7 @@ final class FccController {
         accessories = found
         guard changed else { return }
         if found.isEmpty {
-            log("No MFi accessory connected")
+            log("No MFi accessory visible to this app (0 of any manufacturer)")
         } else {
             for accessory in found {
                 log("Accessory: \(accessory.manufacturer) \(accessory.modelNumber.isEmpty ? accessory.name : accessory.modelNumber)")
@@ -582,6 +586,57 @@ final class FccController {
         lines.append("")
         lines.append(contentsOf: logMessages.reversed())
         return lines.joined(separator: "\n")
+    }
+
+    // MARK: Diagnostics
+
+    /// Reports what the phone can actually see, which is the question when
+    /// Connect finds nothing.
+    ///
+    /// Two channels are checked, because iOS hides the first one from us
+    /// unless we guessed right. `connectedAccessories` only ever returns
+    /// accessories advertising a protocol string this build declared in
+    /// Info.plist, so an empty list means either no MFi accessory at all or
+    /// one speaking a string we did not declare, and nothing distinguishes
+    /// those from inside the app. A new network interface, on the other hand,
+    /// is visible whatever it calls itself: if the controller comes up as a
+    /// USB network gadget the way the smart controllers do, it shows up here
+    /// and needs no MFi programme membership to talk to.
+    func runDiagnostics() {
+        log("Diagnostics")
+        log("  declared protocols: \(ExternalAccessoryTransport.declaredProtocols.joined(separator: ", "))")
+
+        let accessories = ExternalAccessoryTransport.connectedAccessories()
+        log("  MFi accessories visible: \(accessories.count)")
+        for accessory in accessories {
+            log("  - \(accessory.manufacturer) \(accessory.name) model \(accessory.modelNumber) fw \(accessory.firmwareRevision)")
+            log("    protocols: \(accessory.protocolStrings.joined(separator: ", "))")
+        }
+
+        let interfaces = NetworkProbe.interfaces()
+        let baseline = baselineInterfaces.value
+        let fresh = interfaces.filter { !baseline.contains($0.summary) }
+        log("  network interfaces: \(interfaces.count), new since launch: \(fresh.count)")
+        for interface in interfaces where !interface.isLoopback {
+            let marker = baseline.contains(interface.summary) ? " " : "*"
+            log("  \(marker) \(interface.summary)")
+        }
+
+        let candidates = fresh.filter(\.isCandidate)
+        guard !candidates.isEmpty else {
+            log("  no new usable interface, so no USB network gadget appeared")
+            return
+        }
+        log("  probing TCP \(NetworkProbe.djiCommandPort) on the new interfaces")
+        engineQueue.async { [weak self] in
+            for interface in candidates {
+                for peer in NetworkProbe.candidatePeers(for: interface) {
+                    let reachable = NetworkProbe.canReach(host: peer, port: NetworkProbe.djiCommandPort)
+                    self?.postLog("  \(peer):\(NetworkProbe.djiCommandPort) \(reachable ? "OPEN" : "closed")")
+                }
+            }
+            self?.postLog("  probe done")
+        }
     }
 
     private func log(_ text: String) {

@@ -38,6 +38,10 @@
 
 	<!-- Exposes the session log in the Files app, so a hardware test can
 	     be read back without a Mac attached. -->
+	<!-- The diagnostics probe knocks on a peer address when a USB network
+	     interface appears, which iOS treats as local network access. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Checks whether the connected controller exposes itself as a network device, so the app can find a channel to it.</string>
 	<key>UIFileSharingEnabled</key>
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>

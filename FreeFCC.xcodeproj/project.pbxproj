@@ -12,6 +12,7 @@
 		1E34F215CE3C8120AA3138F9 /* DumplTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = F73A57F3E7849D4A801DD6E7 /* DumplTransport.swift */; };
 		1E8005D2CE698FB79527CFA4 /* FccPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = B90DF3FCEA2737C7BD4195FD /* FccPage.swift */; };
 		2756D95474B6A20F979D996F /* FccController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1AB6B9B8D91A5BC3E3C00F8 /* FccController.swift */; };
+		294FDBCBD410B920273542CA /* NetworkProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33BBC6BE0D093311EADDFA30 /* NetworkProbe.swift */; };
 		2F4E359EC4F5D1F9CA8B5647 /* FreeFCCApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F269BDB2B666A11FD321ACE9 /* FreeFCCApp.swift */; };
 		320AD0030BD91BC2F23314B5 /* DumplBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F945186B0344A4838B54BAB /* DumplBuilderTests.swift */; };
 		3B79C83311687153C606FB8E /* profiles in Resources */ = {isa = PBXBuildFile; fileRef = FC4824C1A32C6E8FF50C5043 /* profiles */; };
@@ -42,6 +43,7 @@
 		17DB275E76F321F2FBFFDF0D /* DumplBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DumplBuilder.swift; sourceTree = "<group>"; };
 		1F945186B0344A4838B54BAB /* DumplBuilderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DumplBuilderTests.swift; sourceTree = "<group>"; };
 		203737AE39B27A36A03A70D8 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
+		33BBC6BE0D093311EADDFA30 /* NetworkProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkProbe.swift; sourceTree = "<group>"; };
 		37F856A3A436F2A103A7ED23 /* FreeFCC.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = FreeFCC.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		384DE1489CC3E1C8AAA136BA /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		3883CFA580FEDD918B3C65F6 /* DiagnosticLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticLog.swift; sourceTree = "<group>"; };
@@ -131,6 +133,7 @@
 				F73A57F3E7849D4A801DD6E7 /* DumplTransport.swift */,
 				5E541708079E4081D419FAB3 /* ExternalAccessoryTransport.swift */,
 				F1AB6B9B8D91A5BC3E3C00F8 /* FccController.swift */,
+				33BBC6BE0D093311EADDFA30 /* NetworkProbe.swift */,
 				BFCE24BA821820607A43C063 /* ProfileLoader.swift */,
 				DF340DD20FEDDE1B6A9F8188 /* RCLink.swift */,
 			);
@@ -252,6 +255,7 @@
 				1E8005D2CE698FB79527CFA4 /* FccPage.swift in Sources */,
 				2F4E359EC4F5D1F9CA8B5647 /* FreeFCCApp.swift in Sources */,
 				531489E243AA823E9AE6CAD1 /* LogPage.swift in Sources */,
+				294FDBCBD410B920273542CA /* NetworkProbe.swift in Sources */,
 				8403A7AE2F0FE8649EBACE09 /* ProfileLoader.swift in Sources */,
 				44A2F9460B399ACD41EC4751 /* ProfilePage.swift in Sources */,
 				9A05C7ECC78F709094978EF8 /* RCLink.swift in Sources */,

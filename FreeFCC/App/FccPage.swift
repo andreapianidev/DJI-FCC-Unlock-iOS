@@ -23,6 +23,31 @@ struct FccPage: View {
             }
 
             settingsCard($controller.autoFcc, $controller.framingMode)
+            diagnosticsCard
+        }
+    }
+
+    /// Always available, because the interesting failure is the one where
+    /// Connect finds nothing and there is otherwise nothing to look at.
+    private var diagnosticsCard: some View {
+        GlowCard {
+            Text("Diagnostics")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Palette.textWhite)
+                .padding(.bottom, 4)
+            Text(
+                """
+                Reports what the phone can see on both channels: MFi accessories, \
+                and any network interface that appeared since launch. Results go to \
+                the Log tab.
+                """
+            )
+            .font(.system(size: 12))
+            .foregroundStyle(Palette.textGray)
+            .padding(.bottom, 14)
+            GlowButton(title: "Run Diagnostics", tint: Palette.amber, filled: false) {
+                controller.runDiagnostics()
+            }
         }
     }
 
