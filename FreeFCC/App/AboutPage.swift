@@ -11,7 +11,7 @@ struct AboutPage: View {
             PageTitle(title: "About", symbol: "info.circle")
 
             GlowCard {
-                Text("FreeFCC for iOS")
+                Text("FCC Unlock for iOS")
                     .font(.system(size: 20, weight: .black))
                     .foregroundStyle(Palette.textWhite)
                     .padding(.bottom, 6)

@@ -167,7 +167,7 @@ final class FccController {
         }
         preferredProtocol = defaults.string(forKey: Keys.preferredProtocol) ?? ""
         DiagnosticLog.shared.startSession(header: [
-            "FreeFCC iOS 1.0 build \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?")",
+            "FCC Unlock iOS 1.0 build \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?")",
             "Device \(UIDevice.current.model) iOS \(UIDevice.current.systemVersion)",
             "Started \(ISO8601DateFormatter().string(from: Date()))",
             "Declared protocols: \(ExternalAccessoryTransport.declaredProtocols.joined(separator: ", "))"
@@ -653,7 +653,7 @@ final class FccController {
 
     /// Whole log as one block, for the share sheet on the Log tab.
     var logExport: String {
-        var lines = ["FreeFCC iOS log"]
+        var lines = ["FCC Unlock iOS log"]
         if !transportName.isEmpty { lines.append("Transport: \(transportName)") }
         if !protocolInUse.isEmpty { lines.append("Protocol: \(protocolInUse)") }
         if !detectedSerial.isEmpty { lines.append("Aircraft: \(detectedSerial)") }

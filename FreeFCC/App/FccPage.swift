@@ -275,7 +275,7 @@ private struct AppHeader: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            Text("FreeFCC")
+            Text("FCC Unlock")
                 .font(.system(size: 30, weight: .black))
                 .kerning(0.5)
                 .foregroundStyle(Palette.cyan.opacity(glow))

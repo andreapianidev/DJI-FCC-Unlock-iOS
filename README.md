@@ -1,6 +1,6 @@
 <div align="center">
 
-# 📡 FreeFCC for iOS
+# 📡 FCC Unlock for iOS
 
 ### FCC unlock and 500m altitude for DJI RC-N1 / RC-N2 / RC-N3, native on iPhone
 
@@ -101,7 +101,7 @@ and changes a regulatory radio setting.
 2. **Close DJI Fly.**
 3. Cable the iPhone to the **TOP** USB port of the controller, the one in the
    phone cradle.
-4. Open FreeFCC, tap **Connect**. Wait for the green line with the aircraft
+4. Open FCC Unlock, tap **Connect**. Wait for the green line with the aircraft
    serial, that is the drone being linked.
 5. Tap **Enable FCC Mode** and let the sweep finish.
 6. Open DJI Fly, check the Transmission tab. Signal reaching past the 1km mark is
