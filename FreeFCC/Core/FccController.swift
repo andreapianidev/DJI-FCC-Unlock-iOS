@@ -1349,6 +1349,79 @@ final class FccController {
         postLog("Telemetry read done.")
     }
 
+    // MARK: Experimental, Sport-speed boost (issue #3, writes control params)
+
+    /// Writes the attitude-range and vertical-velocity parameters that cap Sport
+    /// speed, to modest higher values, then reads the 0xF9 echo. Flight-control
+    /// parameters, unlike the altitude limits: a wrong value changes how the
+    /// aircraft handles. Values are chosen to be safe across encodings, and the
+    /// flight controller clamps out-of-range writes to its own maximum. Still,
+    /// this must be flight-tested low and slow, and a power cycle resets it.
+    func applySpeedBoost() {
+        guard requireConnection() else { return }
+        if !aircraftLinked {
+            log("WARNING: no aircraft linked. Writes will not land.")
+        }
+        log("Experimental: Sport-speed boost (writes control params, flight-test required)")
+        engineQueue.async { [weak self] in self?.applySpeedBoostSync() }
+    }
+
+    private nonisolated func applySpeedBoostSync() {
+        guard let transport = transportBox.value else { return }
+        if !waitForAircraft(timeoutMs: 20000) {
+            postLog("No aircraft linked. Nothing written.")
+            return
+        }
+        let path = preferredPath.value
+        let route = transport.currentRoute
+        let flyc = SpeedExperiment.flycSet
+        let writeId = SpeedBoost.writeByHash
+        postLog(String(format: "Speed boost in context sender %02X / %@", path.sender, path.framing.label))
+        postLog("Flight-safety: test low and slow in open space. Power-cycle the drone to reset.")
+
+        func emit(_ set: Int, _ id: Int, dst: Int, cmdType: Int, _ payload: [UInt8]) {
+            let frame = DumplBuilder.buildFrame(
+                DumplFrame(sender: path.sender, cmdType: cmdType, cmdSet: set, cmdId: id, dst: dst, payload: payload)
+            )
+            transport.write(RCLink.encode(frame, framing: path.framing, route: route))
+        }
+
+        func writeAndEcho(_ p: GateParam, dst: Int) -> [UInt8]? {
+            emit(0x10, 0x58, dst: 0x12, cmdType: 0x20, [0x03, 0x01, 0x00])
+            Thread.sleep(forTimeInterval: 0.03)
+            emit(0x03, 0xDF, dst: 0x03, cmdType: 0x40, [0x01, 0x00, 0x00, 0x00])
+            Thread.sleep(forTimeInterval: 0.05)
+            beginCapture([(flyc << 8) | writeId])
+            emit(flyc, writeId, dst: dst, cmdType: 0x20, p.hashLE + p.value)
+            let echo = endCapture(windowMs: 200).first?.payload
+            emit(0x10, 0x58, dst: 0x12, cmdType: 0x20, [0x03, 0x01, 0x00])
+            Thread.sleep(forTimeInterval: 0.05)
+            return echo
+        }
+
+        var anyEcho = false
+        for p in SpeedBoost.params {
+            let wrote = p.value.map { String(format: "%02X", $0) }.joined(separator: " ")
+            postLog("• \(p.name)")
+            postLog("  \(p.note)")
+            postLog("  writing [\(wrote)]")
+            var echo = writeAndEcho(p, dst: 0x03)
+            if echo == nil { echo = writeAndEcho(p, dst: 0x92) }
+            if let e = echo {
+                let hex = e.map { String(format: "%02X", $0) }.joined(separator: " ")
+                postLog("  echo [\(hex)]  \(decodeEcho(e))")
+                anyEcho = true
+            } else {
+                postLog("  no echo (accepted silently, or the parameter is a different width)")
+            }
+            Thread.sleep(forTimeInterval: 0.08)
+        }
+        if !anyEcho {
+            postLog("No echo on any parameter. If the apply was cold (0 responses), warm the link and retry.")
+        }
+        postLog("Speed boost written. Fly Sport low and slow, then Read Flight Telemetry to measure km/h.")
+    }
+
     /// Best-effort human reading of a read-value reply. The reply is
     /// status + hash + value; the value's width is whatever the parameter is,
     /// so this shows it as int and as float and lets the eye pick the sensible

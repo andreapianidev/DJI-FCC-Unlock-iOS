@@ -151,6 +151,37 @@ struct ExperimentalPage: View {
                     BodyText("Connect on the FCC tab first.", color: Palette.textDim)
                 }
             }
+
+            GlowCard {
+                HStack(spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(Palette.red)
+                    Text("Sport-speed boost (writes control)")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(Palette.red)
+                }
+                .padding(.bottom, 10)
+                BodyText(
+                    """
+                    Raises the attitude range and vertical-velocity limits that cap Sport speed \
+                    (28.8 km/h horizontal, 10.8 km/h up on this Neo) toward the ~60 km/h the drone \
+                    reaches with the goggles. These are flight-control parameters: a change alters \
+                    how the aircraft handles. Values are modest and the flight controller clamps \
+                    out-of-range writes, but this must be flown low and slow in open space. A power \
+                    cycle resets it. Run an FCC apply first and check it got responses > 0, or the \
+                    writes will not land.
+                    """,
+                    color: Palette.textGray
+                )
+                .padding(.bottom, 14)
+                if controller.isConnected {
+                    GlowButton(title: "Boost Sport Speed (flight-test)", tint: Palette.red, filled: false) {
+                        controller.applySpeedBoost()
+                    }
+                } else {
+                    BodyText("Connect on the FCC tab first.", color: Palette.textDim)
+                }
+            }
         }
     }
 }

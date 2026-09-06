@@ -208,6 +208,35 @@ enum ConfigRead {
     ]
 }
 
+/// The staged Sport-speed boost (issue #3).
+///
+/// The Neo caps horizontal speed at 8 m/s (28.8 km/h) and ascent at 3 m/s from
+/// the RC, while it reaches ~16 m/s in manual with the goggles. Horizontal speed
+/// is set by the attitude range (max tilt), capped by atti_limit; ascent by
+/// vert_up_vel. This writes modest values, safe across encodings: as integer
+/// degrees they are an aggressive-but-flyable tilt, and if the parameter is a
+/// different unit or width the write is a no-op rather than an extreme. The
+/// flight controller also clamps out-of-range writes to its own maximum, proven
+/// when max_height 500 stored 120. Flight-safety-critical: test low and slow,
+/// and power-cycle to reset.
+enum SpeedBoost {
+    static let writeByHash = 0xF9
+    private static func u16(_ v: Int) -> [UInt8] { [UInt8(v & 0xFF), UInt8((v >> 8) & 0xFF)] }
+
+    static let params: [GateParam] = [
+        GateParam(name: "control.atti_limit_0", hash: 0x9f9646e9, value: u16(45),
+                  note: "raise the cap on atti_range first"),
+        GateParam(name: "control.atti_range_0", hash: 0x9da51eee, value: u16(40),
+                  note: "max tilt in GPS/Sport, drives horizontal speed"),
+        GateParam(name: "control.horiz_vel_atti_range_0", hash: 0xde0fff00, value: u16(40),
+                  note: "horizontal-velocity attitude range"),
+        GateParam(name: "control.vert_up_vel_0", hash: 0x3d45f2c8, value: u16(6),
+                  note: "max ascent speed, currently ~3 m/s"),
+        GateParam(name: "control.vert_down_vel_0", hash: 0x70dbcaa7, value: u16(6),
+                  note: "max descent speed"),
+    ]
+}
+
 /// Decoder for the FLYCONTROLLER OSD General push (set 0x03, id 0x43), the frame
 /// that carries live height, ground speed and flight mode. Offsets follow the
 /// dji-firmware-tools dissector: relative_height int16 at 16 (0.1 m), Vgx/Vgy/Vgz
