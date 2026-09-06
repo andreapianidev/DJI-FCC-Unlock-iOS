@@ -154,6 +154,26 @@ FreeFCCTests/            frames, parser, profile and altitude checks
 docs/screenshots/        the images above
 ```
 
+## 🤝 Contributing, help wanted
+
+This is the **open-source answer** to the paid FCC/altitude tools. FCC power is
+done and confirmed; the rest is open reverse engineering, and it moves faster
+with more hands and more hardware. Everything still to do is written up as
+detailed issues:
+
+- 🛰️ **[#1 Unlock 500m altitude](../../issues/1)** and **[#3 unlock ~60 km/h speed](../../issues/3)**, the headline features, both drone-side RE.
+- 🔑 **[#2 Get the config-table read answering](../../issues/2)**, the tool that unblocks both of the above.
+- ⚡ **[#4 Drop the "open DJI Fly first" step](../../issues/4)** by initialising the link ourselves.
+- 🧪 **[#5 Testers wanted](../../issues/5)** on RC-N1 / RC-N2 and other aircraft, no coding needed, just a device and a log.
+- 📡 **[#6 Read the region back](../../issues/6)** for a real in-app CE/FCC indicator.
+
+Each issue lists what is known, the exact parameter hashes and commands, and the
+next concrete step. Pick one, open a PR, or just run the app on your hardware and
+post your log. Findings from real devices are as valuable as code.
+
+> A write-up and a call for testers will go up on Reddit (r/dji and friends) so
+> owners of other DJI gear can help map the parameters across models.
+
 ## 📜 License
 
 GPL-3.0. See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md). The DUML protocol the
