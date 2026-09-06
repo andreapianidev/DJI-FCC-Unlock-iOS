@@ -31,6 +31,8 @@ struct RootView: View {
                 .tabItem { Label("Log", systemImage: "list.bullet.rectangle") }
             ProfilePage()
                 .tabItem { Label("Profile", systemImage: "doc.text.magnifyingglass") }
+            ExperimentalPage()
+                .tabItem { Label("Experimental", systemImage: "flask") }
             AboutPage()
                 .tabItem { Label("About", systemImage: "info.circle") }
         }

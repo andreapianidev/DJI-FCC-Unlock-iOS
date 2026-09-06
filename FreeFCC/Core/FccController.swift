@@ -931,6 +931,95 @@ final class FccController {
         return result
     }
 
+    // MARK: Experimental, speed parameters (read only for now)
+
+    /// Reads the flight controller's attitude parameters that govern top
+    /// horizontal speed, plus max_height as a self-check. Sends only Get Info
+    /// (0xF7) and Read Value (0xF8), never a write.
+    ///
+    /// The point of reading before writing: the info reply carries the min,
+    /// max and default the firmware itself enforces, so a later speed change
+    /// can stay inside bounds the flight controller already honours instead of
+    /// guessing a number off a YouTube video.
+    func probeSpeedParams() {
+        guard requireConnection() else { return }
+        if !aircraftLinked {
+            log("WARNING: no aircraft linked. Readings will be empty until the drone is up.")
+        }
+        log("Experimental: reading attitude/speed parameters (read only)")
+        engineQueue.async { [weak self] in self?.probeSpeedParamsSync() }
+    }
+
+    private nonisolated func probeSpeedParamsSync() {
+        guard let transport = transportBox.value else { return }
+        let route = transport.currentRoute
+
+        func send(_ cmdId: Int, _ payload: [UInt8]) -> [(key: Int, payload: [UInt8])] {
+            beginCapture([(SpeedExperiment.flycSet << 8) | cmdId])
+            let frame = DumplBuilder.buildFrame(
+                DumplFrame(sender: Self.senderNet0, cmdType: 0x40,
+                           cmdSet: SpeedExperiment.flycSet, cmdId: cmdId,
+                           dst: 0x03, payload: payload)
+            )
+            transport.write(RCLink.encode(frame, framing: .rclink, route: route))
+            return endCapture(windowMs: 200)
+        }
+
+        for param in SpeedExperiment.params {
+            postLog("• \(param.name)")
+            postLog("  \(param.note)")
+
+            // Info: type, size, and the firmware's own min/max/default.
+            let info = send(SpeedExperiment.getInfoByHash, param.hashLE)
+            if let reply = info.first, let parsed = ParamInfo(payload: reply.payload) {
+                if parsed.status == 0 {
+                    postLog("  type \(SpeedExperiment.typeName(parsed.typeId)) size \(parsed.size)")
+                    postLog("  min \(parsed.minText)  max \(parsed.maxText)  default \(parsed.defText)")
+                } else {
+                    postLog("  info status \(parsed.status) (parameter not exposed here)")
+                }
+            } else {
+                postLog("  no info reply")
+            }
+
+            // Current value.
+            let value = send(SpeedExperiment.readValueByHash, param.hashLE)
+            if let reply = value.first {
+                let hex = reply.payload.map { String(format: "%02X", $0) }.joined(separator: " ")
+                postLog("  current raw [\(hex)]")
+                postLog("  \(interpretValue(reply.payload))")
+            } else {
+                postLog("  no value reply")
+            }
+        }
+        postLog("Experimental read done. Nothing was written.")
+    }
+
+    /// Best-effort human reading of a read-value reply. The reply is
+    /// status + hash + value; the value's width is whatever the parameter is,
+    /// so this shows it as int and as float and lets the eye pick the sensible
+    /// one.
+    private nonisolated func interpretValue(_ payload: [UInt8]) -> String {
+        // status(1) + hash(4) + value(N)
+        guard payload.count > 5 else { return "value: (short)" }
+        let value = Array(payload[5...])
+        func u32(_ b: [UInt8]) -> UInt32 {
+            var v: UInt32 = 0
+            for (i, byte) in b.prefix(4).enumerated() { v |= UInt32(byte) << (8 * i) }
+            return v
+        }
+        if value.count >= 4 {
+            let u = u32(value)
+            return "value: uint \(u)  int \(Int32(bitPattern: u))  float \(String(format: "%.3f", Float(bitPattern: u)))"
+        }
+        if value.count == 2 {
+            let u = UInt16(value[0]) | (UInt16(value[1]) << 8)
+            return "value: \(u)"
+        }
+        if value.count == 1 { return "value: \(value[0])" }
+        return "value: (empty)"
+    }
+
     private func log(_ text: String) {
         let stamp = Self.timeFormatter.string(from: Date())
         let entry = "[\(stamp)] \(text)"
