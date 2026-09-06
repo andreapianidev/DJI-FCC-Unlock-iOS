@@ -120,30 +120,34 @@ If the command channel turns out to be one of the amber ones, add it to
 The three strings shipped here are the ones DJI's own Mobile SDK requires on
 iOS: `com.dji.protocol`, `com.dji.common`, `com.dji.video`.
 
-## What is still unknown
+## Confirmed on hardware
 
-Honest list of what has been verified and what has not.
+Tested on an RC-N3 with a DJI Mini-class aircraft, September 2026. FCC power
+reached, verified on the DJI Fly Transmission graph (signal extending past the
+1km reference).
 
-**Verified here**
+Three things had to be right, and the first two are where the Android profile
+was wrong for this firmware:
 
-- The DUMPL frames this app builds are byte-identical to the Android build's,
-  checked by recomputing both CRCs bitwise from their polynomials across every
-  payload length from 0 to 64 bytes.
-- The 21-frame profile still fits inside the service-mode window: one round is
-  0.63s, well under the 1.5s the timing note calls for.
-- The stream parser recovers frames from split reads, back-to-back frames,
-  leading garbage, and RCLink envelopes, and rejects frames with a broken CRC.
-- The app builds and signs for a real iPhone, and the 23 unit tests pass.
+- **The command channel is `com.dji.logiclink`**, one of the two MFi protocol
+  strings DJI does not document. The three published SDK strings are not enough:
+  the RC-N3 advertises only logiclink, so a build declaring only the documented
+  three never sees the controller at all.
+- **The region is set by country code `US` (0x55 0x53), not `AU`.** The Android
+  profile's WiFi Set Country Code frames carried `AU` (0x41 0x55). This RC-N3
+  acknowledges those frames either way, but only `US` moves the radio to FCC,
+  matching the dji-firmware-tools note that a country of "US" is what triggers
+  it. The RADIO 6/0x72 command the profile also uses is dead on this firmware
+  and is not what does the work.
+- **The aircraft must be linked when you apply.** The frames reach the
+  controller and stop there until it is relaying to a drone, which reads in the
+  log exactly like FCC being refused. The app now shows a green link line with
+  the aircraft serial once the drone is there, and refuses to claim success
+  applying into a dead link.
 
-**Not verified, needs hardware**
-
-- Whether the RC-N1/N2/N3 MFi channel accepts DUMPL commands at all. It carries
-  DJI Fly's own command traffic, so the parser is on the other end of it, but
-  no published capture confirms the framing.
-- Which framing that channel wants, RCLink or raw. Hence the sweep.
-- Which protocol string carries commands rather than video.
-- Whether the aircraft actually switches region, which only the DJI Fly
-  Transmission graph can tell you.
+One honest limit: this firmware answers no region-read command (RC 6/0x21 Get
+returns nothing), so the app cannot read back whether FCC is active. The DJI Fly
+Transmission graph is the only confirmation.
 
 ## Project layout
 

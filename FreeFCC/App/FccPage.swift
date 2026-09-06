@@ -14,7 +14,21 @@ struct FccPage: View {
 
             GlowCard {
                 ModeBadge(isFccEnabled: controller.isFccEnabled)
-                    .padding(.bottom, 20)
+                    .padding(.bottom, 12)
+                if controller.isConnected {
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(controller.aircraftLinked ? Palette.green : Palette.amber)
+                            .frame(width: 8, height: 8)
+                        Text(controller.aircraftLinked
+                             ? "Aircraft linked: \(controller.detectedSerial)"
+                             : "Aircraft not linked yet. Wait for the drone before applying.")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(controller.aircraftLinked ? Palette.green : Palette.amber)
+                        Spacer()
+                    }
+                    .padding(.bottom, 12)
+                }
                 actionSection
             }
 

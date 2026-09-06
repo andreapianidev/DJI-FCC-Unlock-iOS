@@ -94,17 +94,22 @@ struct AboutPage: View {
             }
 
             GlowCard {
-                Text("Not tested on real hardware")
+                Text("Confirmed on hardware")
                     .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(Palette.amber)
+                    .foregroundStyle(Palette.green)
                     .padding(.bottom, 12)
                 BodyText(
                     """
-                    Neither this port nor the Android original has been confirmed on a live \
-                    aircraft. The DUMPL frames come from the publicly documented dji-firmware-tools \
-                    protocol. Whether the controller's MFi channel accepts them the way its USB \
-                    accessory channel does is the open question this build exists to answer, and \
-                    the Log tab is what answers it.
+                    Confirmed on an RC-N3 with a DJI Mini-class aircraft: FCC power reached on the \
+                    DJI Fly Transmission graph. Two things the Android profile got wrong for this \
+                    firmware, both fixed here. The command channel is the MFi protocol \
+                    com.dji.logiclink, which DJI does not document. And the region is set by the \
+                    country code US (0x55 0x53), not the AU the original profile carried.
+
+                    The drone must be linked to the controller when you apply, not just powered \
+                    on: the frames reach the controller and stop there until it is relaying to the \
+                    aircraft. This firmware answers no region-read command, so the Transmission \
+                    graph is the only confirmation.
                     """
                 )
             }

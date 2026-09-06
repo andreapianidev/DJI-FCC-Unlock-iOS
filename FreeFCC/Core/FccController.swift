@@ -333,8 +333,21 @@ final class FccController {
 
     // MARK: Apply
 
+    /// True once the aircraft has been seen on the link.
+    ///
+    /// The serial only turns up in the telemetry the aircraft streams, and it
+    /// streams nothing until the RC has re-linked to it. An apply with this
+    /// false reaches the RC and stops there, which reads in the log exactly
+    /// like FCC being refused, so it is worth calling out before wasting a
+    /// physical test on it.
+    var aircraftLinked: Bool { transportBox.value?.detectedSerial.isEmpty == false }
+
     func enableFcc() {
         guard requireConnection() else { return }
+        if !aircraftLinked {
+            log("WARNING: no aircraft telemetry yet. The RC has not re-linked to the drone.")
+            log("Power the drone on, wait for the link, confirm the camera feed in DJI Fly, then retry.")
+        }
         guard let profile else {
             log("FCC profile is missing from the bundle")
             return
@@ -966,11 +979,23 @@ final class FccController {
                 self.message = "FCC applied and the controller answered. Check Transmission in DJI Fly."
                 self.log("FCC applied, starting repeat to hold it")
                 self.startRepeat()
+            } else if anyWrite && self.aircraftLinked {
+                // The aircraft is on the link and the frames went out. This
+                // firmware answers no region Get, so the graph is the only
+                // confirmation, and the pass that takes often lands a few
+                // seconds later once the link fully settles. Hold automatically
+                // and keep re-applying rather than asking for a manual tap.
+                self.status = .fccEnabled
+                self.isFccEnabled = true
+                self.busyProgress = 1
+                self.message = "FCC sequence applied and held. Verify in DJI Fly Transmission: the signal should reach past 1km."
+                self.log("Applied with the aircraft linked, holding by re-applying (region cannot be read back here)")
+                self.startRepeat()
             } else if anyWrite {
                 self.status = .sentUnconfirmed
                 self.isFccEnabled = false
-                self.message = "Sequence sent, nothing answered. Check Transmission in DJI Fly: if it reads FCC anyway, tap Hold."
-                self.log("Sent with no response on any path, not claiming FCC")
+                self.message = "Sent, but no aircraft on the link. Power the drone on, wait for the link, then apply again."
+                self.log("Sent with no aircraft linked, not holding")
             } else {
                 self.status = .connected
                 self.message = "FCC apply failed. Is the aircraft powered on and linked?"
