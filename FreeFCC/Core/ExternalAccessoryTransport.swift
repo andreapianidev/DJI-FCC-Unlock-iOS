@@ -406,8 +406,14 @@ final class ExternalAccessoryTransport: NSObject, DumplTransport, StreamDelegate
     /// Aircraft serials and model codes travel as plain ASCII inside the
     /// telemetry stream, so a rolling window over the raw bytes finds them
     /// without having to decode the telemetry itself.
+    /// True once the full 1581... serial has been found, as opposed to just
+    /// the short model code. The model code arrives as a provisional value and
+    /// is upgraded to the serial the moment it appears, so the shown identity
+    /// stops flipping between the two.
+    private let haveFullSerial = Protected(false)
+
     private func scanForSerial(_ bytes: [UInt8]) {
-        guard serial.value.isEmpty else { return }
+        guard !haveFullSerial.value else { return }
         let text = String(bytes.map { Character(UnicodeScalar($0)) })
         let window = asciiWindow.withLock { buffer -> String in
             buffer += text
@@ -415,12 +421,17 @@ final class ExternalAccessoryTransport: NSObject, DumplTransport, StreamDelegate
             return buffer
         }
         let range = NSRange(window.startIndex..<window.endIndex, in: window)
+        // Prefer the full serial. Once found, lock it in.
         if let match = Self.serialPattern?.firstMatch(in: window, range: range),
            let found = Range(match.range, in: window) {
             serial.value = String(window[found])
+            haveFullSerial.value = true
             return
         }
-        if let match = Self.modelPattern?.firstMatch(in: window, range: range),
+        // Otherwise keep the model code as a provisional identity, but keep
+        // scanning so the serial can still replace it.
+        if serial.value.isEmpty,
+           let match = Self.modelPattern?.firstMatch(in: window, range: range),
            let found = Range(match.range, in: window) {
             serial.value = String(window[found])
         }
