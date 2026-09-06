@@ -10,7 +10,7 @@
   "inter_frame_delay_ms": 30,
   "inter_round_delay_ms": 100,
   "read_window_ms": 50,
-  "repeat_interval_ms": 8000,
+  "repeat_interval_ms": 4000,
   "timing_note": "The whole burst has to land inside the service-mode window opened by frame 1 (AUTOTEST enter) and closed by the last frame (AUTOTEST exit). 30ms per frame puts a full 2-round pass at roughly 1.5s. Stretch it past a few seconds and the radio silently stays on CE.",
   "frames": [
     { "s": 16, "i": 88,  "d": 18,  "p": "030100",             "note": "AUTOTEST set: enter service mode (dst=SVO)" },
