@@ -2,10 +2,9 @@ import Foundation
 
 /// A bidirectional byte pipe to a DJI controller or aircraft.
 ///
-/// The Android original has two implementations, USB accessory (AOA) and USB
-/// VCOM bulk. Neither exists on iOS: the only sanctioned link to an MFi
-/// accessory is an `EASession`, so this protocol has a single production
-/// implementation plus a loopback used by the tests.
+/// The only sanctioned link to a cabled MFi accessory on iOS is an
+/// `EASession`, so this protocol has a single production implementation plus a
+/// loopback used by the tests.
 protocol DumplTransport: AnyObject, Sendable {
     /// Human-readable identity of the far end, shown in the UI.
     var name: String { get }

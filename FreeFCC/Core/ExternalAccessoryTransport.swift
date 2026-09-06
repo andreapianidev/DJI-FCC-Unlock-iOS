@@ -67,13 +67,12 @@ enum TransportError: LocalizedError {
     }
 }
 
-/// MFi transport, the iOS counterpart of the Android AOA accessory pipe.
+/// MFi transport for the cabled DJI controller.
 ///
-/// The Android build is the USB accessory and the controller is the USB host.
-/// iOS has no equivalent, so the same bytes travel over an `EASession`: the
-/// controller is an MFi accessory, the app opens a session on one of its
-/// protocol strings and gets a pair of streams. The DUMPL frames, the RCLink
-/// envelope, the bootstrap handshake and the keepalives are all unchanged.
+/// The controller is a certified MFi accessory: the app opens an `EASession`
+/// on one of its protocol strings and gets a pair of streams. The DUMPL
+/// frames, the RCLink envelope, the bootstrap handshake and the keepalives all
+/// travel over that stream.
 ///
 /// Both streams are scheduled on a private run loop thread and only ever
 /// touched from it. `write` appends to a buffer from any thread and pokes that

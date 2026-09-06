@@ -21,9 +21,21 @@ struct ProfileTests {
 
     @Test func fccProfileIsInTheBundle() throws {
         let profile = try loadFcc()
-        #expect(profile.frames.count == 21)
+        #expect(profile.frames.count == 22)
         #expect(profile.sender == 0x82)
         #expect(profile.rounds == 2)
+
+        // The profile sets the altitude ceiling to 500m by writing
+        // g_config.flying_limit.max_height. The parameter is addressed by its
+        // hash 0x0371238a, little-endian in the payload, followed by the value
+        // 500 as a uint16 (0x01F4). This asserts that frame is present and
+        // carries exactly 500, so a careless edit cannot silently change the
+        // altitude the app claims to set.
+        let maxHeightHashLE: [UInt8] = [0x8A, 0x23, 0x71, 0x03]
+        let maxHeightFrame = profile.frames.first { $0.payload.starts(with: maxHeightHashLE) }
+        let frame = try #require(maxHeightFrame, "max_height frame missing")
+        let value = Int(frame.payload[4]) | (Int(frame.payload[5]) << 8)
+        #expect(value == 500, "altitude ceiling should be 500m, got \(value)")
     }
 
     @Test func fccProfileKeepsTheBurstInsideTheServiceModeWindow() throws {

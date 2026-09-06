@@ -1,178 +1,152 @@
-# FreeFCC for iOS
+<div align="center">
 
-iOS port of [FreeFCC USB](https://github.com/doesthings/FreeFCC-USB), the
-open-source FCC unlock for DJI RC-N1 / RC-N2 / RC-N3 controllers. Same DUMPL
-protocol, same 21-frame profile, same CRC tables. Different transport, because
-iOS has no Android Open Accessory.
+# 📡 FreeFCC for iOS
 
-> **Disclaimer.** For educational and research purposes. Modifying radio
-> transmission parameters may violate the law where you are: in most places,
-> transmitting above the power permitted for your region requires authorisation
-> from the regulator. You are solely responsible for compliance. Not affiliated
-> with DJI, and using this may void your warranty and DJI Care Refresh.
+### FCC unlock and 500m altitude for DJI RC-N1 / RC-N2 / RC-N3, native on iPhone
 
-> **Not tested on hardware.** Neither this port nor the Android original has
-> been confirmed on a live aircraft. See [What is still unknown](#what-is-still-unknown).
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue?style=flat-square)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-iOS%2017%2B-black?style=flat-square&logo=apple)](#)
+[![Confirmed](https://img.shields.io/badge/RC--N3%20%2B%20DJI%20Neo-confirmed%20on%20hardware-34D399?style=flat-square)](#-confirmed-on-hardware)
 
-## The one real difference: the transport
+**The first FCC unlock built natively for iPhone.** No server, no account, no
+tracking. Everything runs on device.
 
-The Android build talks to the controller in **USB accessory mode (AOA)**: the
-RC is the USB host, the phone is the accessory, `UsbManager.openAccessory()`
-returns a file descriptor and raw DUMPL bytes go down it.
+An app by [Andrea Piani](https://www.andreapiani.com).
 
-iOS has no AOA and no libusb. The only sanctioned link to a cabled accessory is
-**MFi / ExternalAccessory**, which is exactly the channel DJI Fly itself uses on
-iPhone: the controller is a certified accessory, the app opens an `EASession`
-on one of its protocol strings and gets an `InputStream` / `OutputStream` pair.
+</div>
 
-Everything above that stream is unchanged:
+---
 
-| Layer | Android | iOS | Same? |
-|---|---|---|---|
-| DUMPL frame builder, CRC-8 + CRC-16 tables | `DumplBuilder.kt` | `DumplBuilder.swift` | byte for byte |
-| RCLink envelope `55 CC 49 57 <len32>` | `wrapRclink` | `RCLink.wrap` | byte for byte |
-| Bootstrap handshake, 2 frames | `sendBootstrap` | `Bootstrap.frames` | byte for byte |
-| Keepalive pair every 2.5s | keepalive thread | run loop timer | byte for byte |
-| 21-frame FCC profile, 2 rounds @ 30ms | `assets/profiles/fcc.json` | `Resources/profiles/fcc.json` | byte for byte |
-| Sender sweep 0x82 then 0x02, then WLM | `applyFccInternal` | `applyFccSync` | same order |
-| Transport | USB accessory (AOA) + USB VCOM | MFi `EASession` | **rewritten** |
+> ## ⚠️ Disclaimer
+>
+> For educational and research purposes. Modifying radio transmission power or
+> altitude limits may violate the law where you are. In most places,
+> transmitting above the power permitted for your region, or flying above the
+> permitted altitude, requires authorisation from the regulator. You are solely
+> responsible for compliance. If you are not sure whether this is legal where you
+> live, do not use it.
+>
+> Not affiliated with, endorsed by, or sponsored by DJI. Using this may void your
+> warranty and DJI Care Refresh coverage.
 
-Two things the port adds, both because the MFi channel is less well charted
-than the AOA one:
+---
 
-- **A framing sweep.** The Android build always wraps in the RCLink envelope
-  over AOA, and never wraps when plugged straight into the aircraft. Nobody has
-  published which of the two the MFi command channel wants, so an apply can
-  sweep both and the Log tab reports which one drew responses.
-- **A real stream parser.** AOA reads arrive on packet boundaries; an MFi
-  stream does not. `DumplStreamParser` resynchronises byte by byte and only
-  emits frames whose header CRC-8 and body CRC-16 both check out, which is what
-  makes the per-path response counts trustworthy.
+## ✨ What it does
 
-## Build and install
+| | Feature |
+|---|---|
+| 📶 | **FCC unlock.** Switches the radio from CE to FCC, 2W instead of 0.5W on 2.4GHz, for more channels and more range. |
+| 🛰️ | **500m altitude.** Sets the flight-controller ceiling to 500m, DJI's own standard maximum. |
+| 🔌 | **Native MFi.** Talks to the controller over the same certified channel DJI Fly uses, no jailbreak, no desktop, no second device. |
+| 🔍 | **Readable.** Every byte sent is a plain JSON profile you can inspect on the Profile tab. |
+| 🔒 | **Offline.** No server contact, no account, no tracking, ever. |
+| 🔁 | **Auto-hold.** Re-applies while the app is backgrounded, so FCC survives DJI Fly reconnecting. |
 
-Requirements: Xcode 26 or newer, iOS 17.0+ target, an Apple ID in Xcode.
+## 📱 Screens
+
+<table>
+<tr>
+<td align="center"><b>FCC active</b></td>
+<td align="center"><b>Activity log</b></td>
+<td align="center"><b>Command profile</b></td>
+<td align="center"><b>About</b></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/01-fcc.jpg" width="200" alt="FCC active"></td>
+<td><img src="docs/screenshots/02-log.jpg" width="200" alt="Activity log"></td>
+<td><img src="docs/screenshots/03-profile.jpg" width="200" alt="Command profile"></td>
+<td><img src="docs/screenshots/04-about.jpg" width="200" alt="About"></td>
+</tr>
+</table>
+
+## ✅ Confirmed on hardware
+
+Tested on real hardware, a **DJI RC-N3** controller cabled to an iPhone with a
+**DJI Neo** aircraft: FCC power reached, verified on the DJI Fly Transmission
+graph with the signal extending well past the 1km reference. Not a simulator or a
+protocol mock, an actual controller and an actual drone in the air. Three things had to be right, and finding them was the work:
+
+- 🔑 **The channel is `com.dji.logiclink`**, one of the two MFi protocol strings
+  DJI does not publish. A build declaring only the three documented strings never
+  sees the controller at all, because iOS hides an accessory whose protocols you
+  did not declare. The string was read off the hardware.
+- 🇺🇸 **The region is set by country code `US`.** The command is the WiFi Set
+  Country Code the controller already accepts; the country it carries is what
+  decides CE or FCC.
+- 🔗 **The aircraft must be linked** when you apply, not just powered on. The
+  frames reach the controller and stop there until it is relaying to a drone. The
+  app shows a green link line with the aircraft serial once the drone is there.
+
+One honest limit: this firmware answers no region-read command, so the app cannot
+read the mode back. The DJI Fly Transmission graph is the confirmation.
+
+## 🛠️ Build and install
+
+Requirements: Xcode 26+, iOS 17+ target, an Apple ID in Xcode.
 
 ```bash
-brew install xcodegen           # once
-cd FreeFCC-iOS
+brew install xcodegen        # once
 xcodegen generate
 open FreeFCC.xcodeproj
 ```
 
-Then pick your iPhone as the run destination and hit Run. The project signs
-with the team wildcard profile, so no App Store Connect setup is needed.
+Pick your iPhone as the destination and Run. The project signs with the team
+wildcard profile, so no App Store Connect setup is needed. This is a sideload for
+your own hardware, not an App Store build: it opens DJI's MFi protocol strings
+and changes a regulatory radio setting.
 
-```bash
-# command line equivalents
-xcodebuild -project FreeFCC.xcodeproj -scheme FreeFCC \
-  -destination 'generic/platform=iOS' -configuration Release build
-xcodebuild -project FreeFCC.xcodeproj -scheme FreeFCC \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
-```
+## 🚀 Using it
 
-This build cannot go on the App Store: it opens a session on DJI's MFi protocol
-strings without being part of DJI's MFi programme, and it changes a regulatory
-radio setting. It is a sideload for your own hardware.
-
-## Using it
-
-1. Power on the aircraft and the controller, wait for the link.
-2. **Close DJI Fly.** Swiping it away is enough on iOS in most cases; if the
-   session will not open, force-quit it from the app switcher.
-3. Cable the iPhone to the **TOP** USB port of the RC, the one in the phone
-   cradle you normally use for DJI Fly. The bottom port is charging only.
-4. Open FreeFCC, tap **Connect**. It keeps looking for 15 seconds, so you can
-   tap it first and close DJI Fly afterwards.
+1. Power on the **drone** and the controller, wait for the link.
+2. **Close DJI Fly.**
+3. Cable the iPhone to the **TOP** USB port of the controller, the one in the
+   phone cradle.
+4. Open FreeFCC, tap **Connect**. Wait for the green line with the aircraft
+   serial, that is the drone being linked.
 5. Tap **Enable FCC Mode** and let the sweep finish.
-6. Open the **Log** tab. A line like `profile@82/RCLink: 3 responses` names the
-   path your hardware answered on. All paths at 0 means the controller is not
-   relaying to the aircraft at all, which is a different failure from FCC being
-   rejected.
-7. Switch to DJI Fly and check the Transmission tab. Signal reaching past the
-   1km mark is FCC, signal stopping at it is still CE.
+6. Open DJI Fly, check the Transmission tab. Signal reaching past the 1km mark is
+   FCC.
 
-FCC mode is RAM-only and reverts on a power cycle, so this has to be repeated
-every time you power the aircraft up. The app re-applies on an interval for as
-long as it holds the session, which also covers the two known resets: DJI Fly
-reconnecting, and the aircraft dropping to CE when it sets the home point on
-GPS lock.
+FCC and the altitude ceiling are RAM-only and reset on a power cycle, so they are
+re-applied every session. The app holds them automatically while it has the link.
 
-The app declares the `external-accessory` background mode, so unlike on Android
-it can keep the session and the repeat running while DJI Fly is in front. If
-DJI Fly cannot see the controller anyway, tap **Release for DJI Fly** to hand
-the link back without unplugging.
+## 🧭 How it works
 
-## If it says the protocol is not declared
+The app opens an `EASession` on the controller's MFi protocol and speaks the DUML
+command protocol over the stream: it builds each frame with its CRC-8 and CRC-16,
+wraps it in the link envelope, keeps the session alive with a keepalive, and
+parses the aircraft's replies out of a stream that also carries the video feed.
 
-iOS refuses an `EASession` for any protocol string not listed in
-`UISupportedExternalAccessoryProtocols`. The app can still *read* the full list
-the accessory advertises, so the Hardware card on the FCC tab shows every
-protocol and flags the ones this build cannot open:
+Each apply sweeps several sender and framing combinations and counts the
+responses, so the Log tab names the path your hardware answered on. The region is
+set with the country code and the altitude ceiling with the flight controller's
+`max_height` parameter, both inside one service-mode window.
 
-```
-Protocol (open)    com.dji.protocol
-Not declared       com.dji.something.else     <- amber
-```
-
-If the command channel turns out to be one of the amber ones, add it to
-`FreeFCC/Info.plist` under `UISupportedExternalAccessoryProtocols` and rebuild.
-The three strings shipped here are the ones DJI's own Mobile SDK requires on
-iOS: `com.dji.protocol`, `com.dji.common`, `com.dji.video`.
-
-## Confirmed on hardware
-
-Tested on an RC-N3 with a DJI Mini-class aircraft, September 2026. FCC power
-reached, verified on the DJI Fly Transmission graph (signal extending past the
-1km reference).
-
-Three things had to be right, and the first two are where the Android profile
-was wrong for this firmware:
-
-- **The command channel is `com.dji.logiclink`**, one of the two MFi protocol
-  strings DJI does not document. The three published SDK strings are not enough:
-  the RC-N3 advertises only logiclink, so a build declaring only the documented
-  three never sees the controller at all.
-- **The region is set by country code `US` (0x55 0x53), not `AU`.** The Android
-  profile's WiFi Set Country Code frames carried `AU` (0x41 0x55). This RC-N3
-  acknowledges those frames either way, but only `US` moves the radio to FCC,
-  matching the dji-firmware-tools note that a country of "US" is what triggers
-  it. The RADIO 6/0x72 command the profile also uses is dead on this firmware
-  and is not what does the work.
-- **The aircraft must be linked when you apply.** The frames reach the
-  controller and stop there until it is relaying to a drone, which reads in the
-  log exactly like FCC being refused. The app now shows a green link line with
-  the aircraft serial once the drone is there, and refuses to claim success
-  applying into a dead link.
-
-One honest limit: this firmware answers no region-read command (RC 6/0x21 Get
-returns nothing), so the app cannot read back whether FCC is active. The DJI Fly
-Transmission graph is the only confirmation.
-
-## Project layout
+## 📂 Project layout
 
 ```
 FreeFCC/
-  Core/
-    DumplBuilder.swift              frame builder, CRC-8 and CRC-16 tables
-    RCLink.swift                    envelope, framing, incremental stream parser
-    ProfileLoader.swift             JSON profile decoding
-    DumplTransport.swift            transport protocol, bootstrap, keepalive
-    ExternalAccessoryTransport.swift  MFi session, run loop IO thread
-    FccController.swift             state, path sweep, repeat, CE restore
-  App/
-    FreeFCCApp.swift                entry point, EA connect notifications
-    FccPage.swift                   main control surface
-    LogPage.swift                   activity log, share sheet
-    ProfilePage.swift               every frame the app will send, in hex
-    AboutPage.swift                 how it works, disclaimer, credits
-    DesignSystem.swift              palette and shared components
-  Resources/profiles/               fcc.json, ce_restore.json
-FreeFCCTests/                       23 tests over frames, parser, profiles
+  Core/    frame builder + CRC, link envelope + stream parser, profile loader,
+           MFi transport, controller (sweep, hold, region, altitude, diagnostics)
+  App/     SwiftUI screens and design system
+  Resources/profiles/   fcc.json (FCC + 500m), ce_restore.json
+FreeFCCTests/            frames, parser, profile and altitude checks
+docs/screenshots/        the images above
 ```
 
-## License
+## 📜 License
 
-AGPL-3.0, inherited from the upstream project. See [LICENSE](LICENSE) and
-[NOTICE.md](NOTICE.md). The DUMPL protocol implementation derives from
-[dji-firmware-tools](https://github.com/o-gs/dji-firmware-tools) (GPL-3.0).
+GPL-3.0. See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md). The DUML protocol the
+app implements is publicly documented by the
+[dji-firmware-tools](https://github.com/o-gs/dji-firmware-tools) project; the iOS
+app and its logic are original work.
+
+---
+
+<div align="center">
+
+© 2026 Andrea Piani · NIE Z2331796-S · Tijarafe, Santa Cruz de Tenerife · Islas Canarias
+
+[andreapiani.com](https://www.andreapiani.com)
+
+</div>

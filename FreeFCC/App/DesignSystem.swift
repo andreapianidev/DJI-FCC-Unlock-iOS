@@ -1,8 +1,7 @@
 import SwiftUI
 
-/// Palette carried over from the Android build, so the two apps read as one
-/// project: near-black navy ground, cyan for the primary action, green for
-/// "the radio took it", amber for work in progress, red for failure.
+/// The app palette: near-black navy ground, cyan for the primary action,
+/// green for "the radio took it", amber for work in progress, red for failure.
 enum Palette {
     static let bgDark = Color(red: 0.027, green: 0.039, blue: 0.078)     // #070A14
     static let bgMid = Color(red: 0.051, green: 0.071, blue: 0.125)      // #0D1220

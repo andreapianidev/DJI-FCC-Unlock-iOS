@@ -4,11 +4,11 @@ import Foundation
 /// link. Which one your hardware wants is decided by the controller firmware,
 /// not by the operating system, so the app can sweep both.
 enum Framing: String, Sendable, CaseIterable, Identifiable {
-    /// DUMPL frame wrapped in the 8-byte RCLink envelope. What the Android
-    /// build sends over the AOA pipe, and the first thing to try over MFi.
+    /// DUMPL frame wrapped in the 8-byte RCLink envelope. The framing the
+    /// controller's mobile-link parser expects, and the first thing to try.
     case rclink
-    /// Bare DUMPL frame, no envelope. What the Android build sends when it is
-    /// plugged straight into the aircraft's USB-C port.
+    /// Bare DUMPL frame, no envelope. The fallback framing, tried when the
+    /// envelope draws no response.
     case raw
 
     var id: String { rawValue }
@@ -66,11 +66,11 @@ enum RCLink {
 
 /// Incremental parser for the inbound byte stream.
 ///
-/// The Android build reads whole USB packets and assumes each read starts on a
-/// frame boundary. An MFi stream gives no such guarantee: bytes arrive in
-/// arbitrary chunks, so this resynchronises on every byte and only emits
-/// frames whose header CRC-8 and body CRC-16 both check out. Anything that
-/// fails is dropped one byte at a time until the stream lines up again.
+/// An MFi stream gives no frame boundaries: bytes arrive in arbitrary chunks,
+/// and the same protocol also carries the video feed. So this resynchronises on
+/// every byte and only emits frames whose header CRC-8 and body CRC-16 both
+/// check out. Anything that fails is dropped one byte at a time until the
+/// stream lines up again.
 struct DumplStreamParser {
 
     /// Route bytes seen on the last RCLink envelope, if any.

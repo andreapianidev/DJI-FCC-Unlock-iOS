@@ -2,10 +2,10 @@ import Foundation
 
 /// A single DUMPL command frame, before wire-encoding.
 ///
-/// DUMPL is DJI's internal command protocol, publicly documented in the
-/// dji-firmware-tools project (GPL-3.0). On Android it is carried over the USB
-/// accessory (AOA) pipe. On iOS the exact same bytes travel over the MFi
-/// ExternalAccessory stream. The wire format below is identical on both.
+/// DUMPL is DJI's command protocol, publicly documented in the
+/// dji-firmware-tools project (GPL-3.0). Over the iOS MFi link these frame
+/// bytes travel on the ExternalAccessory stream exactly as the protocol
+/// defines them.
 ///
 /// - Parameters:
 ///   - sender:  Sender byte, low 5 bits = device type, high 3 bits = index

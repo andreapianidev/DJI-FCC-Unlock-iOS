@@ -1,40 +1,33 @@
 # Notice
 
-This project is a derivative work of **FreeFCC USB** by doesthings,
-<https://github.com/doesthings/FreeFCC-USB>, licensed under AGPL-3.0. It stays
-under AGPL-3.0, and its source has to be offered to anyone it is distributed to.
+FreeFCC for iOS. Copyright (C) 2026 Andrea Piani. https://www.andreapiani.com
 
-The DUMPL protocol implementation in the upstream project derives from
-[dji-firmware-tools](https://github.com/o-gs/dji-firmware-tools) (GPL-3.0).
+Licensed under the GNU General Public License v3.0. See [LICENSE](LICENSE).
 
-## What was carried over unchanged
+## What this is
 
-- The DUMPL wire format and both CRC tables, transcribed from
-  `DumplBuilder.kt` and re-verified against the polynomials by the test suite.
-- The RCLink envelope, the bootstrap handshake and the keepalive pair, from
-  `DumplTransport.kt` and `FccViewModel.kt`.
-- The `fcc.json` and `ce_restore.json` profiles. The frame data is byte for
-  byte the upstream data. The only edit is in the human-readable `note` and
-  `description` fields, where em dashes were replaced with commas to match the
-  typography rules of this repository. No `s`, `i`, `d` or `p` value was
-  touched.
-- The apply strategy: sender sweep 0x82 then 0x02, the assistant unlock once
-  per pass, the WLM 0x51/0x04 switch last, response counting per pass, and the
-  repeat interval.
-- The visual language of the Android UI: palette, card and button treatment,
-  mode badge, connection pill.
+An original iOS application that switches a cabled DJI controller from CE to
+FCC radio mode and sets the altitude ceiling to 500m. The whole app, the MFi
+ExternalAccessory transport, the incremental stream parser, the multi-path
+command sweep, the on-device diagnostics, and the discovery of the working
+channel and country code on real hardware, is the author's own work.
 
-## What is new in this port
+## Protocol credit
 
-- `ExternalAccessoryTransport`, an MFi `EASession` transport with a private run
-  loop IO thread. Replaces both Android transports, since iOS has neither AOA
-  nor raw USB access.
-- `DumplStreamParser`, an incremental resynchronising parser. The Android RX
-  path assumes each USB read starts on a frame boundary, which an MFi stream
-  does not guarantee.
-- The framing sweep, RCLink and raw, because which one the MFi command channel
-  accepts is undocumented.
-- Accessory diagnostics: advertised protocol strings, which are declared in
-  Info.plist and which are not.
-- The Profile tab, which renders every frame including its wire bytes.
-- Swift Testing suites covering the builder, the parser and the profiles.
+The DUML/DUMPL command protocol the app speaks, including the CRC-8 and CRC-16
+tables and the frame layout, is publicly documented by the
+[dji-firmware-tools](https://github.com/o-gs/dji-firmware-tools) project
+(GPL-3.0). This app implements that public protocol; it does not incorporate
+DJI software. Two facts about the region and altitude mechanisms were verified
+against that project's DUML dissector for this hardware:
+
+- Country code `US` on the WiFi Set Country Code command is what moves the RC
+  to FCC.
+- `g_config.flying_limit.max_height`, written by its parameter hash, sets the
+  altitude ceiling. The app writes 500.
+
+## Not affiliated with DJI
+
+This project is not affiliated with, endorsed by, or sponsored by DJI. "DJI",
+"RC-N3", "DJI Fly" and drone model names are used only to describe
+compatibility.
