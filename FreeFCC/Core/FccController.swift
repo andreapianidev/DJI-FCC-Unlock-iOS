@@ -1349,6 +1349,35 @@ final class FccController {
         postLog("Telemetry read done.")
     }
 
+    /// Warmth check. Writes max_height, the value the FCC apply already sets, and
+    /// looks for its 0xF9 echo. That echo only comes back when the controller is
+    /// relaying to the aircraft, so max_height doubles as a link-warmth sensor:
+    /// it echoes when warm, nothing when cold. This removes the ambiguity where a
+    /// cold link and a wrong write both look like "no echo".
+    private nonisolated func linkIsWarm() -> Bool {
+        guard let transport = transportBox.value else { return false }
+        let path = preferredPath.value
+        let route = transport.currentRoute
+        func emit(_ set: Int, _ id: Int, dst: Int, cmdType: Int, _ p: [UInt8]) {
+            transport.write(RCLink.encode(
+                DumplBuilder.buildFrame(DumplFrame(sender: path.sender, cmdType: cmdType, cmdSet: set, cmdId: id, dst: dst, payload: p)),
+                framing: path.framing, route: route))
+        }
+        emit(0x10, 0x58, dst: 0x12, cmdType: 0x20, [0x03, 0x01, 0x00])
+        Thread.sleep(forTimeInterval: 0.03)
+        emit(0x03, 0xDF, dst: 0x03, cmdType: 0x40, [0x01, 0x00, 0x00, 0x00])
+        Thread.sleep(forTimeInterval: 0.05)
+        beginCapture([(SpeedExperiment.flycSet << 8) | SpeedBoost.writeByHash])
+        emit(SpeedExperiment.flycSet, SpeedBoost.writeByHash, dst: 0x03, cmdType: 0x20,
+             [0x8a, 0x23, 0x71, 0x03, 0xf4, 0x01]) // max_height = 500, echoes 120 when warm
+        let warm = endCapture(windowMs: 220).contains {
+            $0.payload.count >= 5 && $0.payload[1] == 0x8a && $0.payload[2] == 0x23 && $0.payload[3] == 0x71
+        }
+        emit(0x10, 0x58, dst: 0x12, cmdType: 0x20, [0x03, 0x01, 0x00])
+        Thread.sleep(forTimeInterval: 0.04)
+        return warm
+    }
+
     // MARK: Experimental, Sport-speed boost (issue #3, writes control params)
 
     /// Writes the attitude-range and vertical-velocity parameters that cap Sport
@@ -1377,6 +1406,16 @@ final class FccController {
         let flyc = SpeedExperiment.flycSet
         let writeId = SpeedBoost.writeByHash
         postLog(String(format: "Speed boost in context sender %02X / %@", path.sender, path.framing.label))
+
+        // Warmth gate: only write when the link is relaying, so a cold run gives
+        // a clear message instead of an ambiguous no-echo.
+        postLog("Checking link warmth (max_height echo)...")
+        if !linkIsWarm() {
+            postLog("Link is COLD: max_height did not echo, so the controller is not relaying to the aircraft.")
+            postLog("Open DJI Fly, wait for the LIVE CAMERA image, close it, then retry within ~15s. Nothing was written.")
+            return
+        }
+        postLog("Link is WARM. Writing the boost (32-bit floats).")
         postLog("Flight-safety: test low and slow in open space. Power-cycle the drone to reset.")
 
         func emit(_ set: Int, _ id: Int, dst: Int, cmdType: Int, _ payload: [UInt8]) {
