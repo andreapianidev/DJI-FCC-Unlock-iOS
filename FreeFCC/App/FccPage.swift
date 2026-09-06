@@ -105,9 +105,17 @@ struct FccPage: View {
         } else if !controller.isConnected {
             BodyText(
                 """
-                Plug the phone into the TOP USB port of the RC-N1, RC-N2 or RC-N3, the one you \
-                normally use for DJI Fly, then tap Connect. Close DJI Fly first. Connect keeps \
-                looking for 15 seconds, so you can also tap it and close DJI Fly afterwards.
+                Sequence that works, in order:
+
+                1. Drone and controller on.
+                2. Open DJI Fly and wait until it shows the drone connected with a camera feed. \
+                This is what wakes the controller's link to the aircraft.
+                3. Close DJI Fly (swipe it away).
+                4. Cable into the TOP USB port and tap Connect here, then Enable FCC.
+
+                The link stays warm for a while after DJI Fly closes, and that is the window this \
+                app needs. Skipping step 2 is why an apply gets 0 responses even though the drone \
+                shows as detected.
                 """
             )
             .padding(.bottom, 20)

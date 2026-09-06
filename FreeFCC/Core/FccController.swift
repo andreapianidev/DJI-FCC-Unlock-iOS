@@ -246,7 +246,7 @@ final class FccController {
         message = "Connecting to the controller..."
         if announce {
             log("Connecting to the controller...")
-            log("Close DJI Fly and plug the phone into the TOP USB port.")
+            log("First open DJI Fly so the drone links, then close it and plug into the TOP USB port.")
         }
 
         frameCensus.value = [:]
