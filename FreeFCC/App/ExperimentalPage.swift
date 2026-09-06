@@ -78,18 +78,31 @@ struct ExperimentalPage: View {
             }
 
             GlowCard {
-                Text("Step 2: a staged change")
+                Text("Step 2: hunt the 500m gate")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Palette.textDim)
+                    .foregroundStyle(Palette.textWhite)
                     .padding(.bottom, 6)
                 BodyText(
                     """
-                    Not enabled yet. It unlocks only after step 1 shows the parameters are \
-                    readable on this aircraft and we have seen the firmware's own maximum. Then \
-                    a single small increase, verified in flight, before any further step.
+                    Writing max_height to 500 is accepted but the drone stores 120, so a \
+                    different parameter gates the ceiling. This probe writes one altitude or geo \
+                    limit candidate at a time and reads back the value the drone actually stored, \
+                    so we can find the one that opens the DJI Fly slider past 120. Results go to \
+                    the Log tab. After it runs, open DJI Fly and check the altitude slider.
+
+                    It writes limit parameters only, never a flight-control one. Restore CE or a \
+                    power cycle undoes every write.
                     """,
-                    color: Palette.textDim
+                    color: Palette.textGray
                 )
+                .padding(.bottom, 14)
+                if controller.isConnected {
+                    GlowButton(title: "Probe 500m Gate (writes limits)", tint: Palette.amber, filled: false) {
+                        controller.probeAltitudeGate()
+                    }
+                } else {
+                    BodyText("Connect on the FCC tab first.", color: Palette.textDim)
+                }
             }
         }
     }

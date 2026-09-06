@@ -167,7 +167,7 @@ final class FccController {
         }
         preferredProtocol = defaults.string(forKey: Keys.preferredProtocol) ?? ""
         DiagnosticLog.shared.startSession(header: [
-            "FCC Unlock iOS 1.0 build \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?")",
+            "FCC Unlock iOS \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?") build \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?")",
             "Device \(UIDevice.current.model) iOS \(UIDevice.current.systemVersion)",
             "Started \(ISO8601DateFormatter().string(from: Date()))",
             "Declared protocols: \(ExternalAccessoryTransport.declaredProtocols.joined(separator: ", "))"
@@ -556,6 +556,12 @@ final class FccController {
             format: "RSP %02X→%02X seq=%d set=%02X id=%02X%@",
             response.sender, response.dst, response.seq, response.cmdSet, response.cmdId, suffix
         ))
+        // A config write/read reply on FLYCONTROLLER carries the value the drone
+        // actually stored. Decoding it here makes an apply self-documenting: it
+        // is how we saw max_height write 500 but store 120.
+        if response.cmdSet == SpeedExperiment.flycSet, response.cmdId == AltitudeGate.writeByHash {
+            postLog("    \(decodeEcho(response.payload))")
+        }
     }
 
     // MARK: Repeat
@@ -1129,6 +1135,101 @@ final class FccController {
             let hex = entry.sample.prefix(24).map { String(format: "%02X", $0) }.joined(separator: " ")
             postLog(String(format: "  %02X->%02X set=03 id=%02X x%d [%@]", sender, dst, id, entry.count, hex))
         }
+    }
+
+    // MARK: Experimental, altitude gate (issue #1, writes limit params)
+
+    /// Hunts the parameter that gates the 500m altitude, by writing one limit
+    /// candidate at a time and reading the value the drone actually stored from
+    /// the write's own 0xF9 reply. This firmware answers the write verb with
+    /// status + hash + stored value, but ignores the read verbs 0xF7/0xF8, so a
+    /// write-and-read-back is the read channel we have.
+    ///
+    /// Writes are limit parameters only (altitude, distance, geo), the same
+    /// class the FCC apply already writes. Restore CE or a power cycle resets
+    /// them. It never writes a control or attitude parameter.
+    func probeAltitudeGate() {
+        guard requireConnection() else { return }
+        if !aircraftLinked {
+            log("WARNING: no aircraft linked. The probe needs the flight controller up.")
+        }
+        log("Experimental: altitude-gate probe (writes altitude/geo limits, reads the 0xF9 echo)")
+        engineQueue.async { [weak self] in self?.probeAltitudeGateSync() }
+    }
+
+    private nonisolated func probeAltitudeGateSync() {
+        guard let transport = transportBox.value else { return }
+        if !waitForAircraft(timeoutMs: 20000) {
+            postLog("No aircraft linked. Nothing to probe.")
+            return
+        }
+        let path = preferredPath.value
+        let route = transport.currentRoute
+        postLog(String(format: "Altitude-gate probe in context sender %02X / %@", path.sender, path.framing.label))
+
+        func emit(_ set: Int, _ id: Int, dst: Int, cmdType: Int, _ payload: [UInt8]) {
+            let frame = DumplBuilder.buildFrame(
+                DumplFrame(sender: path.sender, cmdType: cmdType, cmdSet: set, cmdId: id, dst: dst, payload: payload)
+            )
+            transport.write(RCLink.encode(frame, framing: path.framing, route: route))
+        }
+
+        let flyc = SpeedExperiment.flycSet
+        let writeId = AltitudeGate.writeByHash
+
+        // One tight service window: enter, unlock, write the candidate, read the
+        // 0xF9 echo, exit. Same window discipline as the apply.
+        func writeAndEcho(_ p: GateParam, dst: Int) -> [UInt8]? {
+            emit(0x10, 0x58, dst: 0x12, cmdType: 0x20, [0x03, 0x01, 0x00])
+            Thread.sleep(forTimeInterval: 0.03)
+            emit(0x03, 0xDF, dst: 0x03, cmdType: 0x40, [0x01, 0x00, 0x00, 0x00])
+            Thread.sleep(forTimeInterval: 0.05)
+            beginCapture([(flyc << 8) | writeId])
+            emit(flyc, writeId, dst: dst, cmdType: 0x20, p.hashLE + p.value)
+            let echo = endCapture(windowMs: 200).first?.payload
+            emit(0x10, 0x58, dst: 0x12, cmdType: 0x20, [0x03, 0x01, 0x00])
+            Thread.sleep(forTimeInterval: 0.05)
+            return echo
+        }
+
+        for p in AltitudeGate.candidates {
+            let wrote = p.value.map { String(format: "%02X", $0) }.joined(separator: " ")
+            postLog("• \(p.name)")
+            postLog("  \(p.note)")
+            postLog("  writing [\(wrote)] (\(p.value.count == 1 ? "u8" : "u16"))")
+
+            var echo = writeAndEcho(p, dst: 0x03)
+            if echo == nil { echo = writeAndEcho(p, dst: 0x92) } // also try the SVO route
+            if let e = echo {
+                let hex = e.map { String(format: "%02X", $0) }.joined(separator: " ")
+                postLog("  echo [\(hex)]  \(decodeEcho(e))")
+            } else {
+                postLog("  no echo (parameter may not exist on this firmware)")
+            }
+            Thread.sleep(forTimeInterval: 0.08)
+        }
+        postLog("Altitude-gate probe done. Now open DJI Fly and check the altitude slider.")
+        postLog("Any candidate whose write opens the slider past 120 is the gate. Restore CE / power cycle resets these writes.")
+    }
+
+    /// Decodes a config reply, status(1) + hash(4) + value(N), as the 0xF9 write
+    /// and by-hash read commands return it.
+    private nonisolated func decodeEcho(_ payload: [UInt8]) -> String {
+        guard payload.count >= 5 else {
+            return "status \(payload.first.map { String($0) } ?? "?"), no hash"
+        }
+        let status = payload[0]
+        let hash = UInt32(payload[1]) | (UInt32(payload[2]) << 8) | (UInt32(payload[3]) << 16) | (UInt32(payload[4]) << 24)
+        let v = Array(payload.dropFirst(5))
+        var stored = "(none)"
+        if v.count >= 4 {
+            stored = "\(UInt32(v[0]) | (UInt32(v[1]) << 8) | (UInt32(v[2]) << 16) | (UInt32(v[3]) << 24))"
+        } else if v.count == 2 {
+            stored = "\(UInt16(v[0]) | (UInt16(v[1]) << 8))"
+        } else if v.count == 1 {
+            stored = "\(v[0])"
+        }
+        return String(format: "status %d  hash %08X  stored %@", status, hash, stored)
     }
 
     /// Best-effort human reading of a read-value reply. The reply is

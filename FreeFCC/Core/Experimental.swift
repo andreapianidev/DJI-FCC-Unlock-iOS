@@ -115,3 +115,63 @@ struct ParamInfo: Sendable {
     var maxText: String { number(maxRaw) }
     var defText: String { number(defRaw) }
 }
+
+/// One flight-controller limit parameter the altitude-gate probe writes, then
+/// reads back from the write's own `0xF9` reply (this firmware answers the write
+/// verb with `status + hash + stored value`, but not the read verbs 0xF7/0xF8).
+///
+/// Altitude, distance and geo limits only. No control or attitude parameter is
+/// ever in this list: those govern how the aircraft flies and stay read-only
+/// until a working read exists (issue #3).
+struct GateParam: Sendable {
+    let name: String
+    let hash: UInt32
+    /// Value to write, little-endian, its own width (u8 for a flag, u16 for a
+    /// height, matching what the FCC profile already uses for max_height).
+    let value: [UInt8]
+    let note: String
+
+    var hashLE: [UInt8] {
+        [UInt8(hash & 0xFF), UInt8((hash >> 8) & 0xFF), UInt8((hash >> 16) & 0xFF), UInt8((hash >> 24) & 0xFF)]
+    }
+}
+
+/// The 500m altitude-gate hunt (issue #1).
+///
+/// Writing `flying_limit.max_height` to 500 is acknowledged but the drone stores
+/// 120, so the 120m ceiling is gated by another parameter. This probe writes one
+/// limit candidate at a time and reads the value the drone actually stored, so we
+/// can bisect to the parameter that opens the DJI Fly slider past 120.
+///
+/// Hashes are computed with DJI's own name-hash (verified: the five known params
+/// below reproduce their documented hashes bit for bit), so the generated
+/// candidates address real parameters when they exist and are simply ignored
+/// when they do not.
+enum AltitudeGate {
+    static let writeByHash = 0xF9
+
+    private static func u16(_ v: Int) -> [UInt8] { [UInt8(v & 0xFF), UInt8((v >> 8) & 0xFF)] }
+
+    static let candidates: [GateParam] = [
+        // Verified hashes (reproduce the documented values).
+        GateParam(name: "flying_limit.max_height_0", hash: 0x0371238a, value: u16(500),
+                  note: "the ceiling the app already writes; the drone clamps it to 120"),
+        GateParam(name: "advanced_function.height_limit_enabled_0", hash: 0xae52d19a, value: [0x00],
+                  note: "turn OFF height-limit enforcement (app currently writes 1)"),
+        GateParam(name: "novice_cfg.max_height_0", hash: 0xd9ab9f79, value: u16(500),
+                  note: "beginner-mode ceiling"),
+        GateParam(name: "airport_limit_cfg.cfg_disable_airport_fly_limit_0", hash: 0x8fb32a2d, value: [0x01],
+                  note: "disable airport/NFZ limits"),
+        // Generated candidates for the gate (real hashes, may or may not exist here).
+        GateParam(name: "flying_limit.height_limit_num_0", hash: 0x11ce86a4, value: u16(500),
+                  note: "candidate: a separate height-limit value"),
+        GateParam(name: "flying_limit.height_limit_0", hash: 0x85ad07a3, value: u16(500),
+                  note: "candidate: height limit"),
+        GateParam(name: "flying_limit.max_height_type_0", hash: 0xa61867e2, value: [0x01],
+                  note: "candidate: height-limit type/zone selector"),
+        GateParam(name: "flying_limit.enable_flying_limit_0", hash: 0x510882c8, value: [0x00],
+                  note: "candidate: disable the flying limit entirely"),
+        GateParam(name: "flying_limit.limit_gps_not_ready_max_height_0", hash: 0x642acdc9, value: u16(500),
+                  note: "candidate: GPS-not-ready height ceiling"),
+    ]
+}
