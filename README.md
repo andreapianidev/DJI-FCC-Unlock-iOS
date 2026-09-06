@@ -59,6 +59,11 @@ An app by [Andrea Piani](https://www.andreapiani.com).
 </tr>
 </table>
 
+<div align="center">
+<img src="docs/screenshots/05-transmission.jpg" width="520" alt="DJI Fly transmission spectrum, clean 2.4GHz floor with FCC power active">
+<br><sub>DJI Fly Transmission, 2.4GHz spectrum with FCC power active on an RC-N3 + DJI Neo</sub>
+</div>
+
 ## ✅ Confirmed on hardware
 
 Tested on real hardware, a **DJI RC-N3** controller cabled to an iPhone with a
@@ -97,18 +102,33 @@ and changes a regulatory radio setting.
 
 ## 🚀 Using it
 
-1. Power on the **drone** and the controller, wait for the link.
-2. **Close DJI Fly.**
-3. Cable the iPhone to the **TOP** USB port of the controller, the one in the
-   phone cradle.
-4. Open FCC Unlock, tap **Connect**. Wait for the green line with the aircraft
-   serial, that is the drone being linked.
-5. Tap **Enable FCC Mode** and let the sweep finish.
-6. Open DJI Fly, check the Transmission tab. Signal reaching past the 1km mark is
-   FCC.
+The order matters. The controller only relays commands to the aircraft once
+DJI Fly has woken that link, and the link stays warm for a while after DJI Fly
+closes. That warm window is what the app needs.
 
-FCC and the altitude ceiling are RAM-only and reset on a power cycle, so they are
-re-applied every session. The app holds them automatically while it has the link.
+1. Power on the **drone** and the controller, wait for them to pair.
+2. **Open DJI Fly first** and wait until it shows the drone connected with a
+   live camera feed. This is the step that wakes the controller-to-aircraft
+   link. Skipping it is why an apply gets 0 responses even with the drone
+   detected.
+3. **Close DJI Fly** (swipe it away).
+4. Cable the iPhone to the **TOP** USB port of the controller, the phone-cradle
+   port.
+5. Open FCC Unlock, tap **Connect**, wait for the green line with the aircraft
+   serial, then tap **Enable FCC Mode** and let the sweep finish. A line like
+   `profile@02/RCLink: 38 responses` means the aircraft answered.
+6. Reopen DJI Fly, check the Transmission tab. FCC power shows on the signal
+   graph reaching past the 1km reference.
+
+FCC is RAM-based, so on some aircraft it persists across a power cycle and on
+others it reverts to CE; if it reverts, repeat the steps. The app also
+re-applies on an interval while it holds the link.
+
+> **Altitude note.** The app sets the aircraft's own height ceiling to 500m, but
+> DJI Fly enforces a separate altitude cap from your GPS location: in the EU that
+> is 120m, and it stays 120m even with FCC power active, because that limit lives
+> in the DJI Fly app, not in the drone. Raising it is a DJI Fly / location matter,
+> not something this drone-side app changes.
 
 ## 🧭 How it works
 
