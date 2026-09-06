@@ -145,7 +145,15 @@ final class ExternalAccessoryTransport: NSObject, DumplTransport, StreamDelegate
     private let stats = Protected(RxStats())
 
     private var parser = DumplStreamParser()
-    private var ioThread: Thread?
+    /// Separate threads for the two directions.
+    ///
+    /// One run loop was enough until real hardware turned up: logiclink
+    /// delivers over a megabyte a second, and a single thread draining that
+    /// never gets round to servicing the output stream, so frames queue up
+    /// and are never sent while the response count reads as a silent
+    /// aircraft. The directions do not share a thread any more.
+    private var rxThread: Thread?
+    private var txThread: Thread?
     private var keepaliveTimer: Timer?
 
     var isOpen: Bool { running.value }
@@ -199,50 +207,75 @@ final class ExternalAccessoryTransport: NSObject, DumplTransport, StreamDelegate
     func start() {
         guard !running.value else { return }
         running.value = true
-        let thread = Thread(target: self, selector: #selector(ioThreadMain), object: nil)
-        thread.name = "FreeFCC-EA-IO"
-        thread.qualityOfService = .userInitiated
-        ioThread = thread
-        thread.start()
+
+        let receiver = Thread(target: self, selector: #selector(rxThreadMain), object: nil)
+        receiver.name = "FreeFCC-EA-RX"
+        receiver.qualityOfService = .userInitiated
+        rxThread = receiver
+
+        let sender = Thread(target: self, selector: #selector(txThreadMain), object: nil)
+        sender.name = "FreeFCC-EA-TX"
+        sender.qualityOfService = .userInitiated
+        txThread = sender
+
+        receiver.start()
+        sender.start()
     }
 
+    /// Queues bytes for transmission.
+    ///
+    /// Returns whether the bytes were accepted for sending, not whether they
+    /// went out; `rxStats.bytesWritten` is the only thing that says that.
     @discardableResult
     func write(_ bytes: [UInt8]) -> Bool {
         guard running.value, !bytes.isEmpty else { return false }
         outBuffer.withLock { $0.append(contentsOf: bytes) }
-        if let ioThread, !ioThread.isFinished {
-            perform(#selector(pump), on: ioThread, with: nil, waitUntilDone: false)
-            return true
-        }
-        return false
+        stats.withLock { $0.bytesQueued += bytes.count }
+        guard let txThread, !txThread.isFinished else { return false }
+        perform(#selector(pump), on: txThread, with: nil, waitUntilDone: false)
+        return true
     }
 
     func close() {
         guard running.value else { return }
         running.value = false
-        if let ioThread, !ioThread.isFinished {
-            perform(#selector(teardown), on: ioThread, with: nil, waitUntilDone: false)
-        } else {
-            teardown()
-        }
     }
 
-    // MARK: IO thread
+    // MARK: Receive thread
 
-    @objc private func ioThreadMain() {
+    @objc private func rxThreadMain() {
         let runLoop = RunLoop.current
         runLoop.add(Port(), forMode: .default)
 
-        guard let input = session.inputStream, let output = session.outputStream else {
+        guard let input = session.inputStream else {
             running.value = false
             return
         }
-
         input.delegate = self
-        output.delegate = self
         input.schedule(in: runLoop, forMode: .default)
-        output.schedule(in: runLoop, forMode: .default)
         input.open()
+
+        while running.value && !Thread.current.isCancelled {
+            runLoop.run(mode: .default, before: Date(timeIntervalSinceNow: 0.25))
+        }
+
+        input.delegate = nil
+        input.close()
+        input.remove(from: runLoop, forMode: .default)
+    }
+
+    // MARK: Send thread
+
+    @objc private func txThreadMain() {
+        let runLoop = RunLoop.current
+        runLoop.add(Port(), forMode: .default)
+
+        guard let output = session.outputStream else {
+            running.value = false
+            return
+        }
+        output.delegate = self
+        output.schedule(in: runLoop, forMode: .default)
         output.open()
 
         // The controller wants the first keepalive one interval in, not the
@@ -259,26 +292,18 @@ final class ExternalAccessoryTransport: NSObject, DumplTransport, StreamDelegate
         keepaliveTimer = timer
 
         while running.value && !Thread.current.isCancelled {
-            runLoop.run(mode: .default, before: Date(timeIntervalSinceNow: 0.25))
+            // A short slice, then another pump attempt. A stream that never
+            // raises hasSpaceAvailable would otherwise sit on a full queue
+            // forever waiting for an event that is not coming.
+            runLoop.run(mode: .default, before: Date(timeIntervalSinceNow: 0.05))
+            pump()
         }
 
-        teardown()
-    }
-
-    @objc private func teardown() {
-        keepaliveTimer?.invalidate()
+        timer.invalidate()
         keepaliveTimer = nil
-        if let input = session.inputStream {
-            input.delegate = nil
-            input.close()
-            input.remove(from: RunLoop.current, forMode: .default)
-        }
-        if let output = session.outputStream {
-            output.delegate = nil
-            output.close()
-            output.remove(from: RunLoop.current, forMode: .default)
-        }
-        running.value = false
+        output.delegate = nil
+        output.close()
+        output.remove(from: runLoop, forMode: .default)
         outBuffer.value = []
     }
 
@@ -286,13 +311,16 @@ final class ExternalAccessoryTransport: NSObject, DumplTransport, StreamDelegate
         guard running.value else { return }
         for frame in Keepalive.frames(framing: framing.value, route: route.value) {
             outBuffer.withLock { $0.append(contentsOf: frame) }
+            stats.withLock { $0.bytesQueued += frame.count }
         }
         pump()
     }
 
     /// Drains the outbound buffer into the stream, as far as it will take.
+    /// Runs on the send thread only.
     @objc private func pump() {
         guard running.value, let output = session.outputStream else { return }
+        stats.withLock { $0.pumps += 1 }
         while output.hasSpaceAvailable {
             let chunk = outBuffer.withLock { buffer -> [UInt8] in
                 buffer.isEmpty ? [] : Array(buffer.prefix(4096))
@@ -304,6 +332,7 @@ final class ExternalAccessoryTransport: NSObject, DumplTransport, StreamDelegate
             }
             if written <= 0 { break }
             outBuffer.withLock { $0.removeFirst(written) }
+            stats.withLock { $0.bytesWritten += written }
             if written < chunk.count { break }
         }
     }
@@ -323,17 +352,26 @@ final class ExternalAccessoryTransport: NSObject, DumplTransport, StreamDelegate
         }
     }
 
+    /// Reads what is waiting, but never more than a bounded slice.
+    ///
+    /// logiclink carries the video feed, so `hasBytesAvailable` is
+    /// essentially always true. An unbounded loop here is an unbounded loop
+    /// full stop: it holds the run loop and nothing else on the thread ever
+    /// runs again.
     private func drainInput() {
         guard let input = session.inputStream else { return }
         var buffer = [UInt8](repeating: 0, count: 4096)
-        while input.hasBytesAvailable {
+        var slices = 0
+        while input.hasBytesAvailable && slices < 16 {
             let read = input.read(&buffer, maxLength: buffer.count)
             if read <= 0 { break }
             handleInbound(Array(buffer[0..<read]))
-            if read < buffer.count { break }
+            slices += 1
         }
     }
 
+    /// Runs on the receive thread only, which is what makes the parser's
+    /// buffer safe to keep as plain state.
     private func handleInbound(_ bytes: [UInt8]) {
         scanForSerial(bytes)
         let frames = parser.feed(bytes)

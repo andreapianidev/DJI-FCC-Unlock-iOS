@@ -410,7 +410,11 @@ final class FccController {
         }
 
         let rx = transport.rxStats
-        postLog("RX so far: \(rx.bytes) bytes, \(rx.framesDecoded) frames decoded")
+        postLog("RX: \(rx.bytes) bytes, \(rx.framesDecoded) frames decoded")
+        postLog("TX: \(rx.bytesWritten) of \(rx.bytesQueued) bytes actually written, \(rx.pumps) pumps")
+        if rx.bytesWritten < rx.bytesQueued {
+            postLog("Backlog of \(rx.bytesQueued - rx.bytesWritten) bytes never left the phone")
+        }
         if rx.framesDecoded == 0 && rx.bytes > 0 {
             // The link is carrying data the parser cannot make sense of, which
             // is a framing problem, not an aircraft that ignored us. The head

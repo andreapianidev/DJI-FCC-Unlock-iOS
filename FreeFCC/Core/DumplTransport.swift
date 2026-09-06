@@ -42,6 +42,12 @@ protocol DumplTransport: AnyObject, Sendable {
 struct RxStats: Sendable {
     var bytes = 0
     var framesDecoded = 0
+    /// Bytes handed to `write`, and bytes the stream actually took. A gap
+    /// between them is the difference between "the aircraft ignored us" and
+    /// "we never spoke", which no response count can tell apart.
+    var bytesQueued = 0
+    var bytesWritten = 0
+    var pumps = 0
     /// First bytes seen on the link, kept for a hex dump. The wire format is
     /// readable straight off this.
     var preview: [UInt8] = []
