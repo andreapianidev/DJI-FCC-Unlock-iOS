@@ -161,6 +161,10 @@ responses, so the Log tab names the path your hardware answered on. The region i
 set with the country code and the altitude ceiling with the flight controller's
 `max_height` parameter, both inside one service-mode window.
 
+> **Deep dive.** The full walkthrough, protocol and frames, transport, the
+> service-mode window, the sweep, and every hardware finding is in
+> **[docs/DOCUMENTAZIONE-TECNICA.md](docs/DOCUMENTAZIONE-TECNICA.md)** (Italian).
+
 ## 📂 Project layout
 
 ```
@@ -170,6 +174,7 @@ FreeFCC/
   App/     SwiftUI screens and design system
   Resources/profiles/   fcc.json (FCC + 500m), ce_restore.json
 FreeFCCTests/            frames, parser, profile and altitude checks
+docs/DOCUMENTAZIONE-TECNICA.md   full protocol + architecture writeup (Italian)
 docs/screenshots/        the images above
 ```
 
