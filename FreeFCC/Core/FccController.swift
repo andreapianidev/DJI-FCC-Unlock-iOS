@@ -958,9 +958,14 @@ final class FccController {
 
     // MARK: Experimental, speed parameters (read only for now)
 
-    /// Reads the flight controller's attitude parameters that govern top
-    /// horizontal speed, plus max_height as a self-check. Sends only Get Info
-    /// (0xF7) and Read Value (0xF8), never a write.
+    /// Reads the flight controller's attitude and altitude parameters, plus
+    /// max_height as a self-check. Two phases: first it finds the read context
+    /// that answers, using max_height (known to be 500 after an FCC apply) as a
+    /// ground-truth probe across cmd_type and destination; then it reads every
+    /// parameter on that context. It opens the same AUTOTEST service-mode plus
+    /// assistant-unlock window an apply opens, but writes no flight parameter of
+    /// its own: only Get Info (0xF7) and Read Value (0xF8) touch the config
+    /// table, never Write (0xF9).
     ///
     /// The point of reading before writing: the info reply carries the min,
     /// max and default the firmware itself enforces, so a later speed change
@@ -981,43 +986,109 @@ final class FccController {
             postLog("No aircraft linked. Reads will be empty.")
             return
         }
+
+        // Read in the exact context an apply proved: the sender byte and the
+        // framing the last sweep answered on (default 0x82 / RCLink, the
+        // profile's own values). The earlier read probe hardcoded sender 0x02
+        // and cmd_type 0x40 and held one service window open across every
+        // parameter, roughly 3s; the profile's own timing note says a burst
+        // stretched past a few seconds silently does nothing. This version
+        // matches the proven sender/framing and keeps each read inside its own
+        // tight service window.
+        let path = preferredPath.value
         let route = transport.currentRoute
+        postLog(String(format: "Reading in the proven apply context: sender %02X / %@",
+                       path.sender, path.framing.label))
 
-        func writeFrame(_ set: Int, _ id: Int, dst: Int, _ payload: [UInt8]) {
+        func emit(_ set: Int, _ id: Int, dst: Int, cmdType: Int, _ payload: [UInt8]) {
             let frame = DumplBuilder.buildFrame(
-                DumplFrame(sender: Self.senderNet0, cmdType: 0x40, cmdSet: set, cmdId: id, dst: dst, payload: payload)
+                DumplFrame(sender: path.sender, cmdType: cmdType, cmdSet: set, cmdId: id, dst: dst, payload: payload)
             )
-            transport.write(RCLink.encode(frame, framing: .rclink, route: route))
+            transport.write(RCLink.encode(frame, framing: path.framing, route: route))
         }
 
-        // The flight controller keeps its config table locked until the same
-        // context the FCC writes use: the AUTOTEST service-mode window plus the
-        // assistant unlock. Reads sent cold get no answer, so open that context
-        // first, exactly as an apply does before it writes.
-        postLog("Opening service mode + assistant unlock for config access")
-        writeFrame(0x10, 0x58, dst: 0x12, [0x03, 0x01, 0x00])   // AUTOTEST enter service mode
-        Thread.sleep(forTimeInterval: 0.05)
-        writeFrame(0x03, 0xDF, dst: 0x03, [0x01, 0x00, 0x00, 0x00]) // assistant unlock
-        Thread.sleep(forTimeInterval: 0.08)
+        let flyc = SpeedExperiment.flycSet
 
-        func send(_ cmdId: Int, _ payload: [UInt8]) -> [(key: Int, payload: [UInt8])] {
-            beginCapture([(SpeedExperiment.flycSet << 8) | cmdId])
-            let frame = DumplBuilder.buildFrame(
-                DumplFrame(sender: Self.senderNet0, cmdType: 0x40,
-                           cmdSet: SpeedExperiment.flycSet, cmdId: cmdId,
-                           dst: 0x03, payload: payload)
-            )
-            transport.write(RCLink.encode(frame, framing: .rclink, route: route))
-            return endCapture(windowMs: 200)
+        // The value portion of a read-value reply (status(1) + hash(4) + value).
+        func replyValue(_ payload: [UInt8]) -> UInt32? {
+            guard payload.count >= 6 else { return nil }
+            let v = Array(payload[5...])
+            if v.count >= 4 { return UInt32(v[0]) | (UInt32(v[1]) << 8) | (UInt32(v[2]) << 16) | (UInt32(v[3]) << 24) }
+            if v.count == 2 { return UInt32(v[0]) | (UInt32(v[1]) << 8) }
+            if v.count == 1 { return UInt32(v[0]) }
+            return nil
         }
 
+        // One tight service window: open exactly like profile frame 1
+        // (AUTOTEST enter, cmd_type 0x20), assistant unlock (0x03/0xDF, the
+        // 0x40 an apply uses), the read verbs for one parameter, then close.
+        // The whole window runs in well under a second.
+        func readInWindow(_ param: FlycParam, readCmdType: Int, dst: Int) -> (info: [UInt8]?, value: [UInt8]?) {
+            emit(0x10, 0x58, dst: 0x12, cmdType: 0x20, [0x03, 0x01, 0x00])       // enter service mode
+            Thread.sleep(forTimeInterval: 0.03)
+            emit(0x03, 0xDF, dst: 0x03, cmdType: 0x40, [0x01, 0x00, 0x00, 0x00]) // assistant unlock
+            Thread.sleep(forTimeInterval: 0.05)
+
+            beginCapture([(flyc << 8) | SpeedExperiment.getInfoByHash])
+            emit(flyc, SpeedExperiment.getInfoByHash, dst: dst, cmdType: readCmdType, param.hashLE)
+            let info = endCapture(windowMs: 180).first?.payload
+
+            beginCapture([(flyc << 8) | SpeedExperiment.readValueByHash])
+            emit(flyc, SpeedExperiment.readValueByHash, dst: dst, cmdType: readCmdType, param.hashLE)
+            let value = endCapture(windowMs: 180).first?.payload
+
+            emit(0x10, 0x58, dst: 0x12, cmdType: 0x20, [0x03, 0x01, 0x00])       // exit service mode
+            Thread.sleep(forTimeInterval: 0.05)
+            return (info, value)
+        }
+
+        // Phase 1: find the read context using the self-check parameter, whose
+        // value is known to be 500 after an FCC apply. Vary only the two
+        // unknowns issue #2 points to: the read verb's cmd_type (the write path
+        // answers on 0x20, not the 0x40 the old probe used) and the destination
+        // the config responder lives behind (0x03, or the 0x92 SVO route the
+        // proven fb-param writes use).
+        let selfCheck = SpeedExperiment.params[0] // flying_limit.max_height
+        postLog("Phase 1: finding the read context on \(selfCheck.name) (expect 500)")
+        var winner: (readCmdType: Int, dst: Int)?
+        outer: for readCmdType in [0x20, 0x40] {
+            for dst in [0x03, 0x92] {
+                let tag = String(format: "cmd_type %02X / dst %02X", readCmdType, dst)
+                let r = readInWindow(selfCheck, readCmdType: readCmdType, dst: dst)
+                if let value = r.value, let u = replyValue(value) {
+                    let hex = value.map { String(format: "%02X", $0) }.joined(separator: " ")
+                    postLog("  \(tag): value [\(hex)] -> \(u)")
+                    if u == 500 {
+                        postLog("  ✓ read context found: \(tag)")
+                        winner = (readCmdType, dst)
+                        break outer
+                    }
+                } else if let info = r.info {
+                    let hex = info.map { String(format: "%02X", $0) }.joined(separator: " ")
+                    postLog("  \(tag): info-only reply [\(hex)], no value")
+                } else {
+                    postLog("  \(tag): no reply")
+                }
+                Thread.sleep(forTimeInterval: 0.10)
+            }
+        }
+
+        guard let winner else {
+            postLog("No read context answered on any cmd_type/dst combination.")
+            postLog("Any FLYCONTROLLER (set=03) frames seen inbound during the probe:")
+            dumpFlycCensus()
+            postLog("Next to try: whole-table read 0xFB, or send the read inside the same burst as a proven write.")
+            return
+        }
+
+        // Phase 2: read every parameter on the winning context.
+        postLog("Phase 2: reading all parameters on the winning context")
         for param in SpeedExperiment.params {
             postLog("• \(param.name)")
             postLog("  \(param.note)")
+            let r = readInWindow(param, readCmdType: winner.readCmdType, dst: winner.dst)
 
-            // Info: type, size, and the firmware's own min/max/default.
-            let info = send(SpeedExperiment.getInfoByHash, param.hashLE)
-            if let reply = info.first, let parsed = ParamInfo(payload: reply.payload) {
+            if let info = r.info, let parsed = ParamInfo(payload: info) {
                 if parsed.status == 0 {
                     postLog("  type \(SpeedExperiment.typeName(parsed.typeId)) size \(parsed.size)")
                     postLog("  min \(parsed.minText)  max \(parsed.maxText)  default \(parsed.defText)")
@@ -1028,18 +1099,36 @@ final class FccController {
                 postLog("  no info reply")
             }
 
-            // Current value.
-            let value = send(SpeedExperiment.readValueByHash, param.hashLE)
-            if let reply = value.first {
-                let hex = reply.payload.map { String(format: "%02X", $0) }.joined(separator: " ")
+            if let value = r.value {
+                let hex = value.map { String(format: "%02X", $0) }.joined(separator: " ")
                 postLog("  current raw [\(hex)]")
-                postLog("  \(interpretValue(reply.payload))")
+                postLog("  \(interpretValue(value))")
             } else {
                 postLog("  no value reply")
             }
+            Thread.sleep(forTimeInterval: 0.08)
         }
-        writeFrame(0x10, 0x58, dst: 0x12, [0x03, 0x01, 0x00])  // AUTOTEST exit service mode
         postLog("Experimental read done. Nothing was written to any parameter.")
+    }
+
+    /// Dumps the inbound frames tallied on the FLYCONTROLLER command set
+    /// (0x03), so a partial or mis-keyed reply is still visible even when no
+    /// read context matched the ack key. The census records every inbound
+    /// frame, so this is the last word on whether the flight controller said
+    /// anything at all on set 0x03 during a read.
+    private nonisolated func dumpFlycCensus() {
+        let census = frameCensus.value.filter { (($0.key >> 8) & 0xFF) == SpeedExperiment.flycSet }
+        guard !census.isEmpty else {
+            postLog("  (no set=03 frames seen at all)")
+            return
+        }
+        for (key, entry) in census.sorted(by: { $0.value.count > $1.value.count }) {
+            let sender = (key >> 24) & 0xFF
+            let dst = (key >> 16) & 0xFF
+            let id = key & 0xFF
+            let hex = entry.sample.prefix(24).map { String(format: "%02X", $0) }.joined(separator: " ")
+            postLog(String(format: "  %02X->%02X set=03 id=%02X x%d [%@]", sender, dst, id, entry.count, hex))
+        }
     }
 
     /// Best-effort human reading of a read-value reply. The reply is
