@@ -371,10 +371,35 @@ final class FccController {
         }
     }
 
+    /// Blocks until the aircraft is seen on the link or the timeout passes.
+    ///
+    /// The serial only appears in the drone's own telemetry, so its presence
+    /// is the one reliable "the RC is relaying to a drone" signal. Applying
+    /// before it is up reaches the controller and stops there, which is the 0
+    /// responses that read like a dead sequence. Waiting here is what makes an
+    /// apply, manual or auto, land on the first try instead of the third.
+    private nonisolated func waitForAircraft(timeoutMs: Int) -> Bool {
+        if transportBox.value?.detectedSerial.isEmpty == false { return true }
+        postLog("Waiting for the aircraft to link...")
+        let deadline = Date().addingTimeInterval(Double(timeoutMs) / 1000)
+        while Date() < deadline {
+            if transportBox.value?.detectedSerial.isEmpty == false {
+                postLog("Aircraft linked, applying now")
+                return true
+            }
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+        return transportBox.value?.detectedSerial.isEmpty == false
+    }
+
     private nonisolated func applyFccSync(profile: Profile, paths: [CommandPath]) {
         guard let transport = transportBox.value else {
             finishApply(anyWrite: false, acks: 0)
             return
+        }
+
+        if !waitForAircraft(timeoutMs: 20000) {
+            postLog("No aircraft after 20s. Applying anyway, but expect no response until the drone is up.")
         }
 
         let framings = Array(Set(paths.map(\.framing)))
