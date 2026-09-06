@@ -697,6 +697,55 @@ final class FccController {
         }
     }
 
+    /// Hunts for a destination that answers the one command that matters.
+    ///
+    /// On an RC-N3 the profile splits cleanly in two: every peripheral write
+    /// is acknowledged, and the frames that actually move the region are not.
+    /// RADIO 6/114 sets the region and commits it, and GENERAL set 0 carries
+    /// the country codes; those four frames draw no response while the
+    /// fourteen around them do. A command that is simply refused would still
+    /// answer, so silence points at the frame never reaching a component that
+    /// handles it, which makes the destination byte the thing to vary.
+    ///
+    /// The destinations come from the census of who is actually talking on
+    /// this link, plus the ones the profile already names. Both request types
+    /// are tried, since a component that ignores a fire-and-forget request
+    /// may still answer one that demands an acknowledgement.
+    func probeRegionCommand() {
+        guard requireConnection() else { return }
+        log("Probing RADIO 6/114 across destinations")
+        let destinations = [0x01, 0x02, 0x03, 0x04, 0x06, 0x07, 0x08, 0x09,
+                            0x0A, 0x0E, 0x0F, 0x12, 0x1F, 0x20, 0x27, 0x28,
+                            0x92, 0xE9, 0xEE]
+        let payload: [UInt8] = [0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00]
+        engineQueue.async { [weak self] in
+            guard let self, let transport = self.transportBox.value else { return }
+            var hits = [String]()
+            for cmdType in [0x20, 0x40] {
+                for dst in destinations {
+                    self.armAckWatch([(0x06 << 8) | 114])
+                    let frame = DumplBuilder.buildFrame(
+                        DumplFrame(sender: Self.senderNet0, cmdType: cmdType,
+                                   cmdSet: 0x06, cmdId: 114, dst: dst, payload: payload)
+                    )
+                    transport.write(RCLink.encode(frame, framing: .rclink, route: transport.currentRoute))
+                    let acks = self.readAckWatch(windowMs: 120)
+                    if acks > 0 {
+                        let line = String(format: "  dst %02X type %02X: %d responses", dst, cmdType, acks)
+                        hits.append(line)
+                        self.postLog(line)
+                    }
+                }
+            }
+            if hits.isEmpty {
+                self.postLog("  no destination answered 6/114 on either request type")
+                self.postLog("  the region command is not reaching anything that handles it")
+            } else {
+                self.postLog("  probe done, \(hits.count) destination(s) answered")
+            }
+        }
+    }
+
     private func log(_ text: String) {
         let stamp = Self.timeFormatter.string(from: Date())
         let entry = "[\(stamp)] \(text)"

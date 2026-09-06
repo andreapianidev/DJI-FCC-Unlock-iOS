@@ -231,8 +231,13 @@ final class ExternalAccessoryTransport: NSObject, DumplTransport, StreamDelegate
         guard running.value, !bytes.isEmpty else { return false }
         outBuffer.withLock { $0.append(contentsOf: bytes) }
         stats.withLock { $0.bytesQueued += bytes.count }
-        guard let txThread, !txThread.isFinished else { return false }
-        perform(#selector(pump), on: txThread, with: nil, waitUntilDone: false)
+        // The send loop pumps on its own short timer, so queued bytes go out
+        // whether or not this nudge lands. Reporting false here while the
+        // bytes were in fact sent is how an apply came to be logged as "no
+        // frame reached the transport" with 19451 of 19451 bytes written.
+        if let txThread, !txThread.isFinished {
+            perform(#selector(pump), on: txThread, with: nil, waitUntilDone: false)
+        }
         return true
     }
 

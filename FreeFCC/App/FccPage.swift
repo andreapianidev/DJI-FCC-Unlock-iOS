@@ -48,6 +48,12 @@ struct FccPage: View {
             GlowButton(title: "Run Diagnostics", tint: Palette.amber, filled: false) {
                 controller.runDiagnostics()
             }
+            if controller.isConnected {
+                Spacer().frame(height: 12)
+                GlowButton(title: "Probe Region Command", tint: Palette.amber, filled: false) {
+                    controller.probeRegionCommand()
+                }
+            }
         }
     }
 
