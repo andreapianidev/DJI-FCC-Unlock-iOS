@@ -76,6 +76,20 @@ struct DumplStreamParser {
     /// Route bytes seen on the last RCLink envelope, if any.
     private(set) var lastRoute: [UInt8]?
 
+    /// How the inbound frames were actually wrapped, and how much of the
+    /// stream the resync had to throw away to find them.
+    ///
+    /// This parser locks onto any valid DUMPL frame regardless of what
+    /// surrounds it, which is why it decodes a link whose outer framing is
+    /// unknown. That leniency hides the outer framing rather than revealing
+    /// it, and skipped bytes are the measure of what is being hidden: a link
+    /// that is pure RCLink skips almost nothing, while a large skip count
+    /// means every frame arrives inside a wrapper this app does not add when
+    /// it sends.
+    private(set) var envelopesSeen = 0
+    private(set) var bareFramesSeen = 0
+    private(set) var skippedBytes = 0
+
     /// Largest RCLink payload treated as plausible. Anything longer is noise.
     private let maxEnvelopePayload = 8192
 
@@ -94,6 +108,7 @@ struct DumplStreamParser {
 
             guard buffer[index] == 0x55 else {
                 index += 1
+                skippedBytes += 1
                 continue
             }
 
@@ -106,10 +121,12 @@ struct DumplStreamParser {
                     | (Int(buffer[index + 7]) << 24)
                 guard len > 0, len <= maxEnvelopePayload else {
                     index += 1
+                    skippedBytes += 1
                     continue
                 }
                 guard remaining >= RCLink.headerLength + len else { break scan }
                 lastRoute = [buffer[index + 2], buffer[index + 3]]
+                envelopesSeen += 1
                 let inner = Array(buffer[(index + RCLink.headerLength)..<(index + RCLink.headerLength + len)])
                 // The envelope carries one or more DUMPL frames; parse them out.
                 frames.append(contentsOf: Self.splitDumplFrames(inner))
@@ -122,20 +139,24 @@ struct DumplStreamParser {
             let length = Int(buffer[index + 1]) | (Int(buffer[index + 2] & 0x03) << 8)
             guard length >= 13, length <= DumplBuilder.maxFrameLength else {
                 index += 1
+                skippedBytes += 1
                 continue
             }
             let header = [buffer[index], buffer[index + 1], buffer[index + 2]]
             guard DumplBuilder.crc8(header, from: 0, to: 3) == buffer[index + 3] else {
                 index += 1
+                skippedBytes += 1
                 continue
             }
             guard remaining >= length else { break scan }
             let frame = Array(buffer[index..<(index + length)])
             guard DumplBuilder.verifyCrc16(frame) else {
                 index += 1
+                skippedBytes += 1
                 continue
             }
             frames.append(frame)
+            bareFramesSeen += 1
             index += length
         }
 

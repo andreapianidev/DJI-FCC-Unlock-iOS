@@ -144,6 +144,9 @@ final class FccController {
     /// Interfaces present before the cable went in, so the diff after it does
     /// is unambiguous.
     private let baselineInterfaces = Protected(Set<String>())
+    /// Every inbound frame tallied by sender, destination and command, so the
+    /// real conversation on the link can be read rather than guessed at.
+    private let frameCensus = Protected([Int: Int]())
 
     private var repeatTimer: DispatchSourceTimer?
     private var serialPollTask: Task<Void, Never>?
@@ -415,6 +418,22 @@ final class FccController {
         if rx.bytesWritten < rx.bytesQueued {
             postLog("Backlog of \(rx.bytesQueued - rx.bytesWritten) bytes never left the phone")
         }
+
+        // How the far end frames what it sends is the best available guide to
+        // how it expects to be spoken to.
+        postLog("Inbound framing: \(rx.envelopes) RCLink envelopes, \(rx.bareFrames) bare frames, \(rx.skippedBytes) bytes skipped resyncing")
+        postLog("First bytes on the link:")
+        postLog(rx.previewHex)
+
+        let census = frameCensus.value
+        let top = census.sorted { $0.value > $1.value }.prefix(15)
+        postLog("Inbound frames by kind, \(census.count) distinct:")
+        for (key, count) in top {
+            postLog(String(
+                format: "  %02X->%02X set=%02X id=%02X  x%d",
+                (key >> 24) & 0xFF, (key >> 16) & 0xFF, (key >> 8) & 0xFF, key & 0xFF, count
+            ))
+        }
         if rx.framesDecoded == 0 && rx.bytes > 0 {
             // The link is carrying data the parser cannot make sense of, which
             // is a framing problem, not an aircraft that ignored us. The head
@@ -478,6 +497,9 @@ final class FccController {
 
     /// Runs on the transport's IO thread, so it only touches the boxes.
     private nonisolated func handleResponseOffMain(_ response: DumplResponse) {
+        let key = (response.sender << 24) | (response.dst << 16) | (response.cmdSet << 8) | response.cmdId
+        frameCensus.withLock { $0[key, default: 0] += 1 }
+
         // The controller streams telemetry non-stop. Logging every frame buries
         // the useful lines, so only responses to commands we just sent count.
         guard response.isResponse, ackKeys.value.contains(response.ackKey) else { return }

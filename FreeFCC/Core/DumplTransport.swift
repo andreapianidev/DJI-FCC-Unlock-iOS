@@ -48,6 +48,10 @@ struct RxStats: Sendable {
     var bytesQueued = 0
     var bytesWritten = 0
     var pumps = 0
+    /// Framing actually observed on the way in.
+    var envelopes = 0
+    var bareFrames = 0
+    var skippedBytes = 0
     /// First bytes seen on the link, kept for a hex dump. The wire format is
     /// readable straight off this.
     var preview: [UInt8] = []

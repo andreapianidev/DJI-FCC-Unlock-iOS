@@ -378,6 +378,9 @@ final class ExternalAccessoryTransport: NSObject, DumplTransport, StreamDelegate
         stats.withLock { current in
             current.bytes += bytes.count
             current.framesDecoded += frames.count
+            current.envelopes = parser.envelopesSeen
+            current.bareFrames = parser.bareFramesSeen
+            current.skippedBytes = parser.skippedBytes
             if current.preview.count < 256 {
                 current.preview.append(contentsOf: bytes.prefix(256 - current.preview.count))
             }
