@@ -37,7 +37,7 @@ An app by [Andrea Piani](https://www.andreapiani.com). Project page and FAQ:
 
 | | Feature |
 |---|---|
-| 📶 | **FCC unlock.** Switches the radio from CE to FCC, 2W instead of 0.5W on 2.4GHz, for more channels and more range. |
+| 📶 | **FCC unlock.** Switches the radio from CE to FCC: 33 dBm (about 2 W) instead of 20 dBm (about 100 mW) on 2.4 GHz, DJI's own limits for the RC-N3, for more channels and more range. |
 | 🛰️ | **500m altitude.** Sets the flight-controller ceiling to 500m, DJI's own standard maximum. |
 | 🔌 | **Native MFi.** Talks to the controller over the same certified channel DJI Fly uses, no jailbreak, no desktop, no second device. |
 | 🔍 | **Readable.** Every byte sent is a plain JSON profile you can inspect on the Profile tab. |

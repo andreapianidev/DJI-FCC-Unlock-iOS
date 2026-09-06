@@ -1,6 +1,6 @@
 {
   "name": "FCC + 500m",
-  "description": "Switches the radio from CE to FCC mode (higher power, 2W vs 0.5W on 2.4GHz, more channels, more range) and sets the altitude ceiling to 500m. The whole sequence runs inside one service-mode window. Written for the DJI RC-N series over the iOS MFi link, and confirmed on an RC-N3.",
+  "description": "Switches the radio from CE to FCC mode (higher power, 33 dBm / about 2W vs 20 dBm / about 100mW on 2.4GHz, more channels, more range) and sets the altitude ceiling to 500m. The whole sequence runs inside one service-mode window. Written for the DJI RC-N series over the iOS MFi link, and confirmed on an RC-N3.",
   "source": "Frames follow the publicly documented DUML/DUMPL protocol (dji-firmware-tools). The region path and the max-height parameter were verified against the dissector on this hardware: country code US triggers FCC, and g_config.flying_limit.max_height sets the ceiling.",
   "sender": 130,
   "sender_desc": "MOBILE_APP, index 4, the phone/tablet/host app",

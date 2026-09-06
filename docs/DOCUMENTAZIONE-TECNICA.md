@@ -45,7 +45,7 @@ Autore, Andrea Piani, www.andreapiani.com.
 
 L'app parla al telecomando DJI attraverso il cavo, con lo stesso protocollo che
 usa DJI Fly, e invia una sequenza di comandi che spostano la radio da regione CE
-(0,5W, potenza europea) a regione FCC (2W, potenza americana), oltre a fissare il
+(20 dBm, circa 0,1 W, potenza europea) a regione FCC (33 dBm, circa 2 W, potenza americana), oltre a fissare il
 tetto di altitudine a 500m. Tutto avviene sul dispositivo, senza server, senza
 account, senza jailbreak.
 

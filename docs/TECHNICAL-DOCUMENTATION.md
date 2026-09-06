@@ -45,7 +45,7 @@ Author, Andrea Piani, www.andreapiani.com.
 
 The app talks to the DJI remote controller over the cable, using the same
 protocol DJI Fly uses, and sends a sequence of commands that move the radio from
-the CE region (0.5W, European power) to the FCC region (2W, American power), and
+the CE region (20 dBm, about 100 mW, European power) to the FCC region (33 dBm, about 2 W, American power), and
 also sets the altitude ceiling to 500m. Everything happens on the device, with
 no server, no account, no jailbreak.
 
