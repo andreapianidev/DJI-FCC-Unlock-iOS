@@ -175,3 +175,72 @@ enum AltitudeGate {
                   note: "candidate: GPS-not-ready height ceiling"),
     ]
 }
+
+/// Read-only probe over `0xFB` (Read Params By Hash), the read verb this
+/// firmware may still answer after 0xF7/0xF8 came back silent. Request format
+/// from the dji-firmware-tools dissector: one flag byte then a 4-byte name hash.
+/// Reading is the unblock for both goals: the geo/authority values for the 500m
+/// gate (#1) and the attitude ranges plus their firmware bounds for the 60 km/h
+/// Sport target (#3), without writing a control parameter.
+///
+/// All hashes here are the real dji-firmware-tools values (verified: the known
+/// ones reproduce their documented hashes).
+enum ConfigRead {
+    static let readMultiByHash = 0xFB
+
+    static let params: [FlycParam] = [
+        FlycParam(name: "flying_limit.max_height_0", hash: 0x0371238a,
+                  note: "altitude ceiling, self-check (expect 120)"),
+        FlycParam(name: "flying_limit.max_radius_0", hash: 0x425c0a94,
+                  note: "distance ceiling"),
+        FlycParam(name: "api_entry_cfg.authority_level_0", hash: 0x7b24ba4b,
+                  note: "SDK/API authority level, the 500m-gate candidate"),
+        FlycParam(name: "api_entry_cfg.height_data_type_0", hash: 0x96a0a2cf,
+                  note: "height data type"),
+        FlycParam(name: "control.atti_range_0", hash: 0x9da51eee,
+                  note: "attitude range, caps Sport speed"),
+        FlycParam(name: "control.horiz_vel_atti_range_0", hash: 0xde0fff00,
+                  note: "horizontal-velocity attitude range"),
+        FlycParam(name: "control.atti_limit_0", hash: 0x9f9646e9,
+                  note: "caps the atti_range max value"),
+        FlycParam(name: "control.horiz_emergency_brake_tilt_max_0", hash: 0x3d833d3a,
+                  note: "emergency-brake tilt max"),
+    ]
+}
+
+/// Decoder for the FLYCONTROLLER OSD General push (set 0x03, id 0x43), the frame
+/// that carries live height, ground speed and flight mode. Offsets follow the
+/// dji-firmware-tools dissector: relative_height int16 at 16 (0.1 m), Vgx/Vgy/Vgz
+/// int16 at 18/20/22 (0.1 m/s), flight-mode byte after the attitude fields.
+enum OsdGeneral {
+    static func i16(_ b: [UInt8], _ off: Int) -> Int16? {
+        guard b.count >= off + 2 else { return nil }
+        return Int16(bitPattern: UInt16(b[off]) | (UInt16(b[off + 1]) << 8))
+    }
+
+    /// Horizontal ground speed in km/h from Vgx and Vgy.
+    static func horizontalKmh(_ payload: [UInt8]) -> Double? {
+        guard let vx = i16(payload, 18), let vy = i16(payload, 20) else { return nil }
+        let ms = (Double(vx * vx) + Double(vy * vy)).squareRoot() * 0.1
+        return ms * 3.6
+    }
+
+    static func heightMeters(_ payload: [UInt8]) -> Double? {
+        guard let h = i16(payload, 16) else { return nil }
+        return Double(h) * 0.1
+    }
+
+    static func flightMode(_ payload: [UInt8]) -> String {
+        // The mode byte sits after longitude(8) latitude(8) height(2) vgx/vgy/vgz(6)
+        // pitch/roll/yaw(6) ctrl_info(1) => offset 31.
+        let off = 31
+        guard payload.count > off else { return "?" }
+        let names: [Int: String] = [
+            0x00: "Manual", 0x01: "Atti", 0x03: "Atti_Hover", 0x04: "Hover",
+            0x06: "GPS_Atti (normal)", 0x0a: "AssistedTakeoff", 0x0b: "AutoTakeoff",
+            0x0c: "AutoLanding", 0x0f: "GoHome", 0x11: "Joystick",
+            0x17: "Atti_Limited", 0x18: "GPS_Atti_Limited",
+        ]
+        return names[Int(payload[off])] ?? String(format: "mode 0x%02X", payload[off])
+    }
+}

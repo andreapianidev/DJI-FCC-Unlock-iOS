@@ -1232,6 +1232,123 @@ final class FccController {
         return String(format: "status %d  hash %08X  stored %@", status, hash, stored)
     }
 
+    // MARK: Experimental, read via 0xFB (read only)
+
+    /// Reads parameters with the `0xFB` verb (Read Params By Hash), the read
+    /// command this firmware may still answer after 0xF7/0xF8 returned nothing.
+    /// Pure read: it writes no parameter. This is the unblock for reading the
+    /// authority/geo values (#1) and the attitude ranges plus bounds (#3).
+    func probeReadFB() {
+        guard requireConnection() else { return }
+        if !aircraftLinked {
+            log("WARNING: no aircraft linked. Reads will be empty.")
+        }
+        log("Experimental: reading parameters via 0xFB (read only)")
+        engineQueue.async { [weak self] in self?.probeReadFBSync() }
+    }
+
+    private nonisolated func probeReadFBSync() {
+        guard let transport = transportBox.value else { return }
+        if !waitForAircraft(timeoutMs: 20000) {
+            postLog("No aircraft linked. Nothing to read.")
+            return
+        }
+        let path = preferredPath.value
+        let route = transport.currentRoute
+        let flyc = SpeedExperiment.flycSet
+        let readId = ConfigRead.readMultiByHash
+        postLog(String(format: "0xFB read in context sender %02X / %@", path.sender, path.framing.label))
+
+        func emit(_ set: Int, _ id: Int, dst: Int, cmdType: Int, _ payload: [UInt8]) {
+            let frame = DumplBuilder.buildFrame(
+                DumplFrame(sender: path.sender, cmdType: cmdType, cmdSet: set, cmdId: id, dst: dst, payload: payload)
+            )
+            transport.write(RCLink.encode(frame, framing: path.framing, route: route))
+        }
+
+        // One tight service window per read: enter, unlock, 0xFB request, exit.
+        // Request payload per the dissector: one flag byte then the 4-byte hash.
+        func readOne(_ p: FlycParam, flag: UInt8, cmdType: Int, dst: Int) -> [UInt8]? {
+            emit(0x10, 0x58, dst: 0x12, cmdType: 0x20, [0x03, 0x01, 0x00])
+            Thread.sleep(forTimeInterval: 0.03)
+            emit(0x03, 0xDF, dst: 0x03, cmdType: 0x40, [0x01, 0x00, 0x00, 0x00])
+            Thread.sleep(forTimeInterval: 0.05)
+            beginCapture([(flyc << 8) | readId])
+            emit(flyc, readId, dst: dst, cmdType: cmdType, [flag] + p.hashLE)
+            let reply = endCapture(windowMs: 200).first?.payload
+            emit(0x10, 0x58, dst: 0x12, cmdType: 0x20, [0x03, 0x01, 0x00])
+            Thread.sleep(forTimeInterval: 0.04)
+            return reply
+        }
+
+        var anyReply = false
+        for p in ConfigRead.params {
+            postLog("• \(p.name)")
+            postLog("  \(p.note)")
+            var reply: [UInt8]?
+            // Sweep flag byte, cmd_type and destination until one answers.
+            outer: for flag: UInt8 in [0x01, 0x00] {
+                for cmdType in [0x40, 0x20] {
+                    for dst in [0x03, 0x92] {
+                        if let r = readOne(p, flag: flag, cmdType: cmdType, dst: dst), !r.isEmpty {
+                            reply = r
+                            postLog(String(format: "  answered on flag %02X / cmd_type %02X / dst %02X", flag, cmdType, dst))
+                            break outer
+                        }
+                    }
+                }
+            }
+            if let r = reply {
+                let hex = r.map { String(format: "%02X", $0) }.joined(separator: " ")
+                postLog("  reply [\(hex)]  \(decodeEcho(r))")
+                anyReply = true
+            } else {
+                postLog("  no reply on any flag/cmd_type/dst")
+            }
+            Thread.sleep(forTimeInterval: 0.06)
+        }
+        if !anyReply {
+            postLog("0xFB returned nothing on this firmware either. The 0xF9 write-echo stays the only config channel.")
+        }
+        postLog("0xFB read done. Nothing was written.")
+    }
+
+    // MARK: Experimental, flight telemetry decode (read only)
+
+    /// Decodes the latest OSD General (0x43) and Limit State (0x55) frames the
+    /// flight controller has been pushing, so a Sport-mode flight shows real
+    /// ground speed, height and flight mode. Reads only the census the app
+    /// already collects; it sends nothing.
+    func readTelemetry() {
+        guard requireConnection() else { return }
+        log("Experimental: decoding the latest flight telemetry")
+        engineQueue.async { [weak self] in self?.readTelemetrySync() }
+    }
+
+    private nonisolated func readTelemetrySync() {
+        let census = frameCensus.value
+        func latest(_ set: Int, _ id: Int) -> [UInt8]? {
+            census.first { (($0.key >> 8) & 0xFF) == set && ($0.key & 0xFF) == id }?.value.sample
+        }
+        guard let osd = latest(SpeedExperiment.flycSet, 0x43) else {
+            postLog("No OSD (0x43) frame captured yet. Fly for a moment, then read again.")
+            return
+        }
+        let hex = osd.prefix(24).map { String(format: "%02X", $0) }.joined(separator: " ")
+        postLog("OSD General (0x43) sample: [\(hex)]")
+        if let h = OsdGeneral.heightMeters(osd) { postLog(String(format: "  height %.1f m", h)) }
+        if let kmh = OsdGeneral.horizontalKmh(osd) { postLog(String(format: "  ground speed %.1f km/h", kmh)) }
+        postLog("  flight mode \(OsdGeneral.flightMode(osd))")
+        if osd.allSatisfy({ $0 == 0 }) {
+            postLog("  (all zero: the drone was on the ground / not armed when captured)")
+        }
+        if let limit = latest(SpeedExperiment.flycSet, 0x55) {
+            let lhex = limit.map { String(format: "%02X", $0) }.joined(separator: " ")
+            postLog("Limit State (0x55) sample: [\(lhex)]")
+        }
+        postLog("Telemetry read done.")
+    }
+
     /// Best-effort human reading of a read-value reply. The reply is
     /// status + hash + value; the value's width is whatever the parameter is,
     /// so this shows it as int and as float and lets the eye pick the sensible

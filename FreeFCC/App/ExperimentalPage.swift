@@ -104,6 +104,53 @@ struct ExperimentalPage: View {
                     BodyText("Connect on the FCC tab first.", color: Palette.textDim)
                 }
             }
+
+            GlowCard {
+                Text("Read via 0xFB")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Palette.textWhite)
+                    .padding(.bottom, 6)
+                BodyText(
+                    """
+                    A pure read over the 0xFB verb, the one this firmware may still answer after \
+                    0xF7/0xF8 came back silent. It reads the authority and geo values behind the \
+                    500m gate and the attitude ranges that cap Sport speed, with their firmware \
+                    bounds, writing nothing. Results go to the Log tab.
+                    """,
+                    color: Palette.textGray
+                )
+                .padding(.bottom, 14)
+                if controller.isConnected {
+                    GlowButton(title: "Read via 0xFB (safe)", tint: Palette.green, filled: false) {
+                        controller.probeReadFB()
+                    }
+                } else {
+                    BodyText("Connect on the FCC tab first.", color: Palette.textDim)
+                }
+            }
+
+            GlowCard {
+                Text("Read flight telemetry")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Palette.textWhite)
+                    .padding(.bottom, 6)
+                BodyText(
+                    """
+                    Decodes the latest OSD frame the flight controller pushes: ground speed, \
+                    height and flight mode. Fly in Sport and push full stick, then read this to \
+                    see the real km/h and whether the mode is limited. Reads only, sends nothing.
+                    """,
+                    color: Palette.textGray
+                )
+                .padding(.bottom, 14)
+                if controller.isConnected {
+                    GlowButton(title: "Read Flight Telemetry (safe)", tint: Palette.green, filled: false) {
+                        controller.readTelemetry()
+                    }
+                } else {
+                    BodyText("Connect on the FCC tab first.", color: Palette.textDim)
+                }
+            }
         }
     }
 }
