@@ -1,5 +1,8 @@
 # Documentazione tecnica, FCC Unlock iOS
 
+> 🇮🇹 Versione italiana. La versione inglese è in
+> [TECHNICAL-DOCUMENTATION.md](TECHNICAL-DOCUMENTATION.md).
+
 Come l'app abilita la modalità FCC su un telecomando DJI RC-N, cosa cambia
 esattamente, perché funziona, con quali protocolli comunica con il telecomando e
 il drone, e tutto ciò che è stato scoperto dai log sull'hardware reale.
@@ -816,7 +819,8 @@ FreeFCC/
     ce_restore.json             il ripristino CE a frame singolo
 FreeFCCTests/                   test su frame, parser, profilo, altitudine
 docs/
-  DOCUMENTAZIONE-TECNICA.md     questo documento
+  DOCUMENTAZIONE-TECNICA.md     questo documento (italiano)
+  TECHNICAL-DOCUMENTATION.md    la versione inglese
   screenshots/                  le immagini del README
 ```
 
