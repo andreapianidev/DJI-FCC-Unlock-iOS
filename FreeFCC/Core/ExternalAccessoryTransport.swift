@@ -111,12 +111,16 @@ final class ExternalAccessoryTransport: NSObject, DumplTransport, StreamDelegate
     static func rankedProtocols(for accessory: EAAccessory) -> [String] {
         let declared = Set(declaredProtocols)
         let advertised = accessory.protocolStrings.filter { declared.contains($0) }
+        // Explicit order rather than a heuristic. logiclink first because the
+        // name says command channel and it is the one the public SDK list
+        // never mentions; video last because a session on it opens and then
+        // carries the camera feed, with no command parser behind it.
+        let priority = ["com.dji.logiclink", "com.dji.protocol", "com.dji.common", "com.dji.fly", "com.dji.video"]
         func rank(_ proto: String) -> Int {
+            if let index = priority.firstIndex(of: proto) { return index }
             let p = proto.lowercased()
-            if p.contains("video") { return 3 }
-            if p.contains("protocol") || p.contains("common") || p.contains("cmd") { return 0 }
-            if p.hasPrefix("com.dji") { return 1 }
-            return 2
+            if p.contains("video") { return priority.count + 1 }
+            return priority.count
         }
         return advertised.sorted { rank($0) < rank($1) }
     }

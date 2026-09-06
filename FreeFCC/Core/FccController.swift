@@ -99,6 +99,20 @@ final class FccController {
         }
     }
 
+    /// Which MFi protocol to open, empty meaning let the ranking choose.
+    ///
+    /// Kept switchable at runtime because the ranking is an educated guess:
+    /// logiclink reads like a command channel and video certainly is not one,
+    /// but only the response counts settle it, and finding out should not
+    /// cost a rebuild.
+    var preferredProtocol: String = "" {
+        didSet {
+            guard preferredProtocol != oldValue else { return }
+            defaults.set(preferredProtocol, forKey: Keys.preferredProtocol)
+            log(preferredProtocol.isEmpty ? "Protocol set to auto" : "Protocol pinned to \(preferredProtocol)")
+        }
+    }
+
     var framingMode: FramingMode = .sweep {
         didSet {
             guard framingMode != oldValue else { return }
@@ -112,6 +126,7 @@ final class FccController {
     private enum Keys {
         static let autoFcc = "auto_fcc"
         static let framingMode = "framing_mode"
+        static let preferredProtocol = "preferred_protocol"
     }
 
     private let defaults = UserDefaults.standard
@@ -137,6 +152,7 @@ final class FccController {
         if let raw = defaults.string(forKey: Keys.framingMode), let mode = FramingMode(rawValue: raw) {
             framingMode = mode
         }
+        preferredProtocol = defaults.string(forKey: Keys.preferredProtocol) ?? ""
         DiagnosticLog.shared.startSession(header: [
             "FreeFCC iOS 1.0 build \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?")",
             "Device \(UIDevice.current.model) iOS \(UIDevice.current.systemVersion)",
@@ -227,7 +243,11 @@ final class FccController {
             refreshAccessories()
             if let accessory = ExternalAccessoryTransport.preferredAccessory() {
                 do {
-                    let transport = try ExternalAccessoryTransport(accessory: accessory)
+                    log("Accessory advertises: \(accessory.protocolStrings.joined(separator: ", "))")
+                    let transport = try ExternalAccessoryTransport(
+                        accessory: accessory,
+                        preferredProtocol: preferredProtocol.isEmpty ? nil : preferredProtocol
+                    )
                     transport.keepaliveFraming = preferredPath.value.framing
                     transport.setFrameListener { [weak self] response in
                         self?.handleResponseOffMain(response)

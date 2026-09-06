@@ -22,7 +22,7 @@ struct FccPage: View {
                 accessoryCard
             }
 
-            settingsCard($controller.autoFcc, $controller.framingMode)
+            settingsCard($controller.autoFcc, $controller.framingMode, $controller.preferredProtocol)
             diagnosticsCard
         }
     }
@@ -151,7 +151,7 @@ struct FccPage: View {
         }
     }
 
-    private func settingsCard(_ autoFcc: Binding<Bool>, _ framing: Binding<FramingMode>) -> some View {
+    private func settingsCard(_ autoFcc: Binding<Bool>, _ framing: Binding<FramingMode>, _ proto: Binding<String>) -> some View {
         GlowCard {
             Toggle(isOn: autoFcc) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -185,6 +185,31 @@ struct FccPage: View {
                     }
                 }
                 .pickerStyle(.segmented)
+                .padding(.top, 4)
+            }
+
+            DividerLine().padding(.vertical, 16)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Protocol")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Palette.textWhite)
+                Text(
+                    """
+                    Which MFi channel to open. Auto takes the highest ranked one the \
+                    controller advertises. Pin a different one if the sweep answers on none.
+                    """
+                )
+                .font(.system(size: 12))
+                .foregroundStyle(Palette.textGray)
+                Picker("Protocol", selection: proto) {
+                    Text("Auto").tag("")
+                    ForEach(ExternalAccessoryTransport.declaredProtocols, id: \.self) { name in
+                        Text(name.replacingOccurrences(of: "com.dji.", with: "")).tag(name)
+                    }
+                }
+                .pickerStyle(.menu)
+                .tint(Palette.cyan)
                 .padding(.top, 4)
             }
         }

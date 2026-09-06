@@ -46,10 +46,24 @@
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+	<!-- MFi protocols this build may open a session on.
+	     iOS refuses EASession for any protocol not listed here, and worse, it
+	     hides the accessory from connectedAccessories entirely, so a wrong
+	     list reads exactly like no controller being plugged in at all.
+
+	     The first three are what DJI documents for third-party SDK
+	     developers. They are not enough: an RC-N3 stayed invisible with only
+	     those while DJI Fly, on the same cable at the same moment, connected
+	     fine. logiclink and fly were read out of DJI Fly's own Info.plist on
+	     the device and appear in no public DJI documentation:
+	       ideviceinstaller list -b com.dji.golite \
+	         -a UISupportedExternalAccessoryProtocols -->
 	<key>UISupportedExternalAccessoryProtocols</key>
 	<array>
+		<string>com.dji.logiclink</string>
 		<string>com.dji.protocol</string>
 		<string>com.dji.common</string>
+		<string>com.dji.fly</string>
 		<string>com.dji.video</string>
 	</array>
 	<key>UISupportedInterfaceOrientations</key>
