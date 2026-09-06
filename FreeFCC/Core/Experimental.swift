@@ -32,8 +32,18 @@ enum SpeedExperiment {
     static let writeValueByHash = 0xF9
 
     static let params: [FlycParam] = [
+        // Altitude and geo limits, the reverse-engineering targets for 500m.
         FlycParam(name: "flying_limit.max_height", hash: 0x0371238a,
-                  note: "Self-check: should read 500 after an FCC apply"),
+                  note: "The aircraft height ceiling. Should read 500 after apply"),
+        FlycParam(name: "flying_limit.max_radius", hash: 0x425c0a94,
+                  note: "The distance ceiling"),
+        FlycParam(name: "advanced_function.height_limit_enabled", hash: 0xae52d19a,
+                  note: "Whether the height limit is enforced"),
+        FlycParam(name: "novice_cfg.max_height", hash: 0xd9ab9f79,
+                  note: "Beginner-mode height ceiling"),
+        FlycParam(name: "airport_limit_cfg.cfg_disable_airport_fly_limit", hash: 0x8fb32a2d,
+                  note: "Whether airport/NFZ limits are disabled"),
+        // Speed limits.
         FlycParam(name: "control.horiz_vel_atti_range", hash: 0xde0fff00,
                   note: "Attitude range that caps horizontal speed"),
         FlycParam(name: "control.atti_range", hash: 0x9da51eee,

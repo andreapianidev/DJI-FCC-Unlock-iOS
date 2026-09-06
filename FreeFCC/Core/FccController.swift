@@ -977,7 +977,28 @@ final class FccController {
 
     private nonisolated func probeSpeedParamsSync() {
         guard let transport = transportBox.value else { return }
+        if !waitForAircraft(timeoutMs: 20000) {
+            postLog("No aircraft linked. Reads will be empty.")
+            return
+        }
         let route = transport.currentRoute
+
+        func writeFrame(_ set: Int, _ id: Int, dst: Int, _ payload: [UInt8]) {
+            let frame = DumplBuilder.buildFrame(
+                DumplFrame(sender: Self.senderNet0, cmdType: 0x40, cmdSet: set, cmdId: id, dst: dst, payload: payload)
+            )
+            transport.write(RCLink.encode(frame, framing: .rclink, route: route))
+        }
+
+        // The flight controller keeps its config table locked until the same
+        // context the FCC writes use: the AUTOTEST service-mode window plus the
+        // assistant unlock. Reads sent cold get no answer, so open that context
+        // first, exactly as an apply does before it writes.
+        postLog("Opening service mode + assistant unlock for config access")
+        writeFrame(0x10, 0x58, dst: 0x12, [0x03, 0x01, 0x00])   // AUTOTEST enter service mode
+        Thread.sleep(forTimeInterval: 0.05)
+        writeFrame(0x03, 0xDF, dst: 0x03, [0x01, 0x00, 0x00, 0x00]) // assistant unlock
+        Thread.sleep(forTimeInterval: 0.08)
 
         func send(_ cmdId: Int, _ payload: [UInt8]) -> [(key: Int, payload: [UInt8])] {
             beginCapture([(SpeedExperiment.flycSet << 8) | cmdId])
@@ -1017,7 +1038,8 @@ final class FccController {
                 postLog("  no value reply")
             }
         }
-        postLog("Experimental read done. Nothing was written.")
+        writeFrame(0x10, 0x58, dst: 0x12, [0x03, 0x01, 0x00])  // AUTOTEST exit service mode
+        postLog("Experimental read done. Nothing was written to any parameter.")
     }
 
     /// Best-effort human reading of a read-value reply. The reply is
