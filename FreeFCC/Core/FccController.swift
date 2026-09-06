@@ -139,6 +139,12 @@ final class FccController {
     private let transportBox = Protected<(any DumplTransport)?>(nil)
     private let ackKeys = Protected(Set<Int>())
     private let ackHits = Protected(0)
+    /// Full inbound responses recorded during a capture window, keyed the same
+    /// way as the ack watch. Counting responses says whether a command was
+    /// heard; the payloads say what the answer actually was, which is what a
+    /// Get command exists to return.
+    private let captureKeys = Protected(Set<Int>())
+    private let captured = Protected([(key: Int, payload: [UInt8])]())
     private let preferredPath = Protected(CommandPath(sender: FccController.senderCapture, framing: .rclink))
     private let repeatCancelled = Protected(true)
     /// Interfaces present before the cable went in, so the diff after it does
@@ -503,6 +509,9 @@ final class FccController {
         // the useful lines, so only responses to commands we just sent count.
         guard response.isResponse, ackKeys.value.contains(response.ackKey) else { return }
         ackHits.withLock { $0 += 1 }
+        if captureKeys.value.contains(response.ackKey) {
+            captured.withLock { $0.append((response.ackKey, response.payload)) }
+        }
         let payload = response.payload.prefix(16).map { String(format: "%02X", $0) }.joined(separator: " ")
         let suffix = payload.isEmpty ? "" : " [\(payload)]"
         postLog(String(
@@ -778,6 +787,135 @@ final class FccController {
             log(String(format: "RADIO frame set=06 id=%02X full payload:", key & 0xFF))
             log(entry.sample.map { String(format: "%02X", $0) }.joined(separator: " "))
         }
+    }
+
+    // MARK: Region, the documented way
+
+    /// The RC and WiFi commands the DUML dissector documents for region,
+    /// which are not the ones the ported profile uses.
+    ///
+    /// The profile sets region through RADIO 6/0x72, a command this RC-N3
+    /// never answers. The dji-firmware-tools dissector names a different
+    /// mechanism: RC 6/0x20 "RC Power Mode CE/FCC Set", its paired 6/0x21
+    /// "Get", and WiFi 7/0x30 "Set Country Code", whose own comment says a
+    /// country of "US" puts the RC into FCC and has it ask the aircraft to
+    /// follow. The RC is device type 6.
+    private enum Rc {
+        static let set = 0x06
+        static let powerModeSet = 0x20
+        static let powerModeGet = 0x21
+        static let deviceRC = 0x06
+
+        static let wifiSet = 0x07
+        static let setCountryCode = 0x30
+    }
+
+    /// Country code payload: str1(4) + str2(4) + unknown(2), per the dissector.
+    private nonisolated static func countryPayload(_ code: String) -> [UInt8] {
+        var field = Array(code.utf8.prefix(4))
+        while field.count < 4 { field.append(0) }
+        return field + field + [0x01, 0x00]
+    }
+
+    /// Reads the RC's current CE/FCC mode. Pure query, sends only a Get.
+    ///
+    /// This is the ground truth the DJI Fly graph only gestures at, and the
+    /// first thing worth knowing: if 6/0x21 answers, the modern mechanism is
+    /// alive on this firmware and its payload says which mode we are in.
+    func readPowerMode() {
+        guard requireConnection() else { return }
+        log("Reading RC power mode (6/21 Get), pure query")
+        engineQueue.async { [weak self] in
+            guard let self, let transport = self.transportBox.value else { return }
+            let key = (Rc.set << 8) | Rc.powerModeGet
+            for dst in [Rc.deviceRC, 0x02, 0x09, 0x0E] {
+                self.beginCapture([key])
+                let frame = DumplBuilder.buildFrame(
+                    DumplFrame(sender: Self.senderNet0, cmdType: 0x40,
+                               cmdSet: Rc.set, cmdId: Rc.powerModeGet, dst: dst, payload: [])
+                )
+                transport.write(RCLink.encode(frame, framing: .rclink, route: transport.currentRoute))
+                let hits = self.endCapture(windowMs: 150)
+                for hit in hits {
+                    let hex = hit.payload.map { String(format: "%02X", $0) }.joined(separator: " ")
+                    self.postLog(String(format: "  dst %02X answered: [%@]", dst, hex))
+                    if let first = hit.payload.first {
+                        self.postLog("  -> mode byte \(first): \(first == 0 ? "CE" : "FCC")")
+                    }
+                }
+                if hits.isEmpty { self.postLog(String(format: "  dst %02X: no answer", dst)) }
+            }
+            self.postLog("Read done")
+        }
+    }
+
+    /// Applies FCC through the documented RC commands, then reads back to
+    /// confirm rather than assuming.
+    ///
+    /// These are the commands DJI Fly itself sends every session, not pokes at
+    /// unknown registers: set the country to US, set the RC power mode to FCC,
+    /// then Get the mode and report what it actually is. RAM-only, so a power
+    /// cycle undoes it.
+    func applyFccRcMode() {
+        guard requireConnection() else { return }
+        status = .applying
+        isBusy = true
+        busyProgress = 0
+        message = "Applying FCC through the RC power-mode commands..."
+        log("Apply FCC (RC mode): country US + RC power mode FCC")
+        engineQueue.async { [weak self] in self?.applyFccRcModeSync() }
+    }
+
+    private nonisolated func applyFccRcModeSync() {
+        guard let transport = transportBox.value else { finishApply(anyWrite: false, acks: 0); return }
+        let route = transport.currentRoute
+        func send(_ set: Int, _ id: Int, dst: Int, _ payload: [UInt8], _ label: String) -> Int {
+            beginCapture([(set << 8) | id])
+            let frame = DumplBuilder.buildFrame(
+                DumplFrame(sender: Self.senderNet0, cmdType: 0x40, cmdSet: set, cmdId: id, dst: dst, payload: payload)
+            )
+            transport.write(RCLink.encode(frame, framing: .rclink, route: route))
+            let hits = endCapture(windowMs: 150)
+            postLog("  \(label): \(hits.count) response\(hits.count == 1 ? "" : "s")")
+            for hit in hits {
+                let hex = hit.payload.map { String(format: "%02X", $0) }.joined(separator: " ")
+                postLog("     [\(hex)]")
+            }
+            return hits.count
+        }
+
+        var answers = 0
+        // Country US to the RC and to the destinations the profile used.
+        let us = Self.countryPayload("US")
+        for dst in [Rc.deviceRC, 0x09, 0x07] {
+            answers += send(Rc.wifiSet, Rc.setCountryCode, dst: dst, us, String(format: "country US -> %02X", dst))
+        }
+        postProgress(0.4)
+        // RC power mode = FCC (1) to the RC.
+        for dst in [Rc.deviceRC, 0x02] {
+            answers += send(Rc.set, Rc.powerModeSet, dst: dst, [0x01], String(format: "power FCC -> %02X", dst))
+        }
+        postProgress(0.7)
+        // Read back.
+        let confirm = send(Rc.set, Rc.powerModeGet, dst: Rc.deviceRC, [], "confirm Get")
+        postProgress(1.0)
+        postLog(confirm > 0 ? "Confirmed by read-back" : "No read-back, check Transmission")
+        finishApply(anyWrite: true, acks: answers)
+    }
+
+    private nonisolated func beginCapture(_ keys: [Int]) {
+        captureKeys.value = Set(keys)
+        captured.value = []
+        armAckWatch(keys)
+    }
+
+    private nonisolated func endCapture(windowMs: Int) -> [(key: Int, payload: [UInt8])] {
+        Thread.sleep(forTimeInterval: max(Double(windowMs), 50) / 1000)
+        let result = captured.value
+        captureKeys.value = []
+        captured.value = []
+        ackKeys.value = []
+        return result
     }
 
     private func log(_ text: String) {

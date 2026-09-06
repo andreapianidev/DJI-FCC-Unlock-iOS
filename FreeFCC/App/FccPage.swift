@@ -50,6 +50,14 @@ struct FccPage: View {
             }
             if controller.isConnected {
                 Spacer().frame(height: 12)
+                GlowButton(title: "Read Power Mode (safe)", tint: Palette.green, filled: false) {
+                    controller.readPowerMode()
+                }
+                Spacer().frame(height: 12)
+                GlowButton(title: "Apply FCC (RC mode)", tint: Palette.cyan) {
+                    controller.applyFccRcMode()
+                }
+                Spacer().frame(height: 12)
                 GlowButton(title: "Dump All Traffic", tint: Palette.cyan, filled: false) {
                     controller.dumpTraffic()
                 }
