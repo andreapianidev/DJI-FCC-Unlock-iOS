@@ -165,7 +165,8 @@ set with the country code and the altitude ceiling with the flight controller's
 
 > **Deep dive.** The full walkthrough, protocol and frames, transport, the
 > service-mode window, the sweep, and every hardware finding is in
-> **[docs/DOCUMENTAZIONE-TECNICA.md](docs/DOCUMENTAZIONE-TECNICA.md)** (Italian).
+> **[docs/TECHNICAL-DOCUMENTATION.md](docs/TECHNICAL-DOCUMENTATION.md)** (English)
+> or **[docs/DOCUMENTAZIONE-TECNICA.md](docs/DOCUMENTAZIONE-TECNICA.md)** (Italian).
 
 ## 📂 Project layout
 
@@ -176,7 +177,8 @@ FreeFCC/
   App/     SwiftUI screens and design system
   Resources/profiles/   fcc.json (FCC + 500m), ce_restore.json
 FreeFCCTests/            frames, parser, profile and altitude checks
-docs/DOCUMENTAZIONE-TECNICA.md   full protocol + architecture writeup (Italian)
+docs/TECHNICAL-DOCUMENTATION.md  full protocol + architecture writeup (English)
+docs/DOCUMENTAZIONE-TECNICA.md   the same writeup in Italian
 docs/screenshots/        the images above
 ```
 
