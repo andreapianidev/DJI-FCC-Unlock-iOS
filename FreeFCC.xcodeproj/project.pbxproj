@@ -24,6 +24,7 @@
 		9A05C7ECC78F709094978EF8 /* RCLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF340DD20FEDDE1B6A9F8188 /* RCLink.swift */; };
 		9D07FA84B62395C2C149CA93 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 384DE1489CC3E1C8AAA136BA /* Assets.xcassets */; };
 		CEE9CA3AF49406C0DABF4EDB /* DumplBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17DB275E76F321F2FBFFDF0D /* DumplBuilder.swift */; };
+		F172F2F5ACAD38FEF33DF3C6 /* DiagnosticLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3883CFA580FEDD918B3C65F6 /* DiagnosticLog.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -43,6 +44,7 @@
 		203737AE39B27A36A03A70D8 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
 		37F856A3A436F2A103A7ED23 /* FreeFCC.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = FreeFCC.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		384DE1489CC3E1C8AAA136BA /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		3883CFA580FEDD918B3C65F6 /* DiagnosticLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticLog.swift; sourceTree = "<group>"; };
 		43C30176958496C632D20490 /* FreeFCCTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = FreeFCCTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		5E541708079E4081D419FAB3 /* ExternalAccessoryTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalAccessoryTransport.swift; sourceTree = "<group>"; };
 		9CA32A2A7C38311258323213 /* ProfilePage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilePage.swift; sourceTree = "<group>"; };
@@ -124,6 +126,7 @@
 		E6BBA74854223D57FB398E35 /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				3883CFA580FEDD918B3C65F6 /* DiagnosticLog.swift */,
 				17DB275E76F321F2FBFFDF0D /* DumplBuilder.swift */,
 				F73A57F3E7849D4A801DD6E7 /* DumplTransport.swift */,
 				5E541708079E4081D419FAB3 /* ExternalAccessoryTransport.swift */,
@@ -241,6 +244,7 @@
 			files = (
 				6AC063AFA8088D9EB7B399CF /* AboutPage.swift in Sources */,
 				88D6A666212ADC3F487B2A80 /* DesignSystem.swift in Sources */,
+				F172F2F5ACAD38FEF33DF3C6 /* DiagnosticLog.swift in Sources */,
 				CEE9CA3AF49406C0DABF4EDB /* DumplBuilder.swift in Sources */,
 				1E34F215CE3C8120AA3138F9 /* DumplTransport.swift in Sources */,
 				131EAD07D5953A161597F2EA /* ExternalAccessoryTransport.swift in Sources */,

@@ -20,38 +20,37 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>LSRequiresIPhoneOS</key>
-	<true/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>external-accessory</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>
 		<string>LaunchBackground</string>
 	</dict>
-	<key>UISupportedInterfaceOrientations</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-	</array>
 	<key>UIRequiresFullScreen</key>
 	<true/>
 
-	<!-- MFi protocols this build is allowed to open a session on.
-	     iOS refuses EASession for any protocol string not listed here, so a
-	     controller whose command channel uses a different string shows up on
-	     the Hardware card as "Not declared": add it here and rebuild.
-	     These three are the strings DJI's own Mobile SDK requires on iOS. -->
+	<!-- Exposes the session log in the Files app, so a hardware test can
+	     be read back without a Mac attached. -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 	<key>UISupportedExternalAccessoryProtocols</key>
 	<array>
 		<string>com.dji.protocol</string>
 		<string>com.dji.common</string>
 		<string>com.dji.video</string>
 	</array>
-
-	<!-- Keeps the session and the FCC repeat alive while DJI Fly is in front. -->
-	<key>UIBackgroundModes</key>
+	<key>UISupportedInterfaceOrientations</key>
 	<array>
-		<string>external-accessory</string>
+		<string>UIInterfaceOrientationPortrait</string>
 	</array>
 </dict>
 </plist>

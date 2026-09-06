@@ -1,6 +1,7 @@
 import ExternalAccessory
 import Foundation
 import Observation
+import UIKit
 
 /// Where the app is in the connect / apply / release cycle.
 enum AppStatus: String, Sendable {
@@ -133,6 +134,12 @@ final class FccController {
         if let raw = defaults.string(forKey: Keys.framingMode), let mode = FramingMode(rawValue: raw) {
             framingMode = mode
         }
+        DiagnosticLog.shared.startSession(header: [
+            "FreeFCC iOS 1.0 build \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?")",
+            "Device \(UIDevice.current.model) iOS \(UIDevice.current.systemVersion)",
+            "Started \(ISO8601DateFormatter().string(from: Date()))",
+            "Declared protocols: \(ExternalAccessoryTransport.declaredProtocols.joined(separator: ", "))"
+        ])
         EAAccessoryManager.shared().registerForLocalNotifications()
         loadProfile()
         refreshAccessories()
@@ -579,8 +586,12 @@ final class FccController {
 
     private func log(_ text: String) {
         let stamp = Self.timeFormatter.string(from: Date())
-        logMessages.insert("[\(stamp)] \(text)", at: 0)
+        let entry = "[\(stamp)] \(text)"
+        logMessages.insert(entry, at: 0)
         if logMessages.count > 200 { logMessages.removeLast(logMessages.count - 200) }
+        // Also to the unified log and the container file, so a run on real
+        // hardware can be read back after the fact instead of retyped.
+        DiagnosticLog.shared.append(entry)
     }
 
     private static let timeFormatter: DateFormatter = {
