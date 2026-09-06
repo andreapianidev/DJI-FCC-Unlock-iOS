@@ -17,6 +17,10 @@ protocol DumplTransport: AnyObject, Sendable {
     var currentRoute: [UInt8] { get }
     /// Aircraft serial or model code sniffed out of the telemetry stream.
     var detectedSerial: String { get }
+    /// What the inbound side has actually seen, which is the difference
+    /// between a link that is silent and one that is talking in a shape the
+    /// parser does not recognise.
+    var rxStats: RxStats { get }
     /// Framing used for the keepalive frames the transport sends on its own.
     var keepaliveFraming: Framing { get set }
 
@@ -28,6 +32,23 @@ protocol DumplTransport: AnyObject, Sendable {
     @discardableResult func write(_ bytes: [UInt8]) -> Bool
     /// Tears the link down.
     func close()
+}
+
+/// What came back up the link.
+///
+/// Bytes arriving while no frame decodes is the signal that matters: it means
+/// the channel is alive and the framing assumption is wrong, which reads
+/// identically to "the aircraft ignored us" if you only count responses.
+struct RxStats: Sendable {
+    var bytes = 0
+    var framesDecoded = 0
+    /// First bytes seen on the link, kept for a hex dump. The wire format is
+    /// readable straight off this.
+    var preview: [UInt8] = []
+
+    var previewHex: String {
+        preview.map { String(format: "%02X", $0) }.joined(separator: " ")
+    }
 }
 
 /// Small lock-guarded box, used to share state across the transport threads.

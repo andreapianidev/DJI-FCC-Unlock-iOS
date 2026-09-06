@@ -80,6 +80,25 @@ struct FccPage: View {
             )
             .padding(.bottom, 20)
             GlowButton(title: "Connect") { controller.connect() }
+        } else if controller.status == .sentUnconfirmed {
+            BodyText(
+                """
+                Every frame went out and nothing came back on any path. That is not the \
+                same as the aircraft refusing FCC: it usually means the commands are not \
+                reaching it in a shape it recognises.
+
+                Open DJI Fly and look at Transmission. If it reads FCC anyway, tap Hold \
+                and the app will keep re-applying. If it reads CE, the Log tab has the \
+                inbound byte dump worth reporting.
+                """,
+                color: Palette.amber
+            )
+            .padding(.bottom, 20)
+            VStack(spacing: 12) {
+                GlowButton(title: "Re-apply FCC") { controller.enableFcc() }
+                GlowButton(title: "Hold FCC Anyway", tint: Palette.amber, filled: false) { controller.holdFcc() }
+                GlowButton(title: "Restore CE Mode", tint: Palette.red, filled: false) { controller.disableFcc() }
+            }
         } else if controller.isFccEnabled {
             BodyText(
                 """

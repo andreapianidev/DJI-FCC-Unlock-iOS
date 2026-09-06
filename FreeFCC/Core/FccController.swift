@@ -11,6 +11,9 @@ enum AppStatus: String, Sendable {
     case connected
     case applying
     case fccEnabled
+    /// Every frame went out and nothing came back. Not the same as success,
+    /// and not the same as failure either.
+    case sentUnconfirmed
     case restoring
     case released
 }
@@ -346,7 +349,7 @@ final class FccController {
 
     private nonisolated func applyFccSync(profile: Profile, paths: [CommandPath]) {
         guard let transport = transportBox.value else {
-            finishApply(succeeded: false)
+            finishApply(anyWrite: false, acks: 0)
             return
         }
 
@@ -406,7 +409,16 @@ final class FccController {
             postLog("No responses on any path. The controller is not relaying to the aircraft, which is not the same as FCC being rejected.")
         }
 
-        finishApply(succeeded: anyWrite)
+        let rx = transport.rxStats
+        postLog("RX so far: \(rx.bytes) bytes, \(rx.framesDecoded) frames decoded")
+        if rx.framesDecoded == 0 && rx.bytes > 0 {
+            // The link is carrying data the parser cannot make sense of, which
+            // is a framing problem, not an aircraft that ignored us. The head
+            // of the stream says which framing it actually is.
+            postLog("Inbound bytes but no frame decoded. First bytes:")
+            postLog(rx.previewHex)
+        }
+        finishApply(anyWrite: anyWrite, acks: (best?.acks ?? 0) + wlmAcks)
     }
 
     /// Unlocks the flight controller for parameter writes. Sent once per pass:
@@ -690,24 +702,45 @@ final class FccController {
         Task { @MainActor [weak self] in self?.winningPath = path }
     }
 
-    private nonisolated func finishApply(succeeded: Bool) {
+    /// Reports the outcome without inflating it.
+    ///
+    /// Writes reaching the transport is not the aircraft accepting anything.
+    /// Treating the two as the same is how an app ends up showing a green FCC
+    /// badge over a radio that never left CE, so a silent sweep gets its own
+    /// state rather than borrowing the successful one.
+    private nonisolated func finishApply(anyWrite: Bool, acks: Int) {
         Task { @MainActor [weak self] in
             guard let self else { return }
             self.isBusy = false
-            if succeeded {
+            self.busyProgress = acks > 0 ? 1 : 0
+            if acks > 0 {
                 self.status = .fccEnabled
                 self.isFccEnabled = true
-                self.busyProgress = 1
-                self.message = "FCC mode applied. Switch to DJI Fly and check Transmission."
+                self.message = "FCC applied and the controller answered. Check Transmission in DJI Fly."
                 self.log("FCC applied, starting repeat to hold it")
                 self.startRepeat()
+            } else if anyWrite {
+                self.status = .sentUnconfirmed
+                self.isFccEnabled = false
+                self.message = "Sequence sent, nothing answered. Check Transmission in DJI Fly: if it reads FCC anyway, tap Hold."
+                self.log("Sent with no response on any path, not claiming FCC")
             } else {
                 self.status = .connected
-                self.busyProgress = 0
                 self.message = "FCC apply failed. Is the aircraft powered on and linked?"
                 self.log("FCC apply failed, no frame reached the transport")
             }
         }
+    }
+
+    /// Starts the re-apply loop on the user's say-so, for the case where the
+    /// radio took the sequence without answering it.
+    func holdFcc() {
+        guard requireConnection() else { return }
+        isFccEnabled = true
+        status = .fccEnabled
+        message = "Holding FCC by re-applying on an interval."
+        log("Hold requested, starting repeat despite no responses")
+        startRepeat()
     }
 
     private nonisolated func finishRestore(succeeded: Bool) {

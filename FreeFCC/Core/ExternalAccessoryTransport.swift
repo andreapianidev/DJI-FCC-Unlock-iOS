@@ -142,6 +142,7 @@ final class ExternalAccessoryTransport: NSObject, DumplTransport, StreamDelegate
     private let listener = Protected<(@Sendable (DumplResponse) -> Void)?>(nil)
     private let framing = Protected(Framing.rclink)
     private let asciiWindow = Protected("")
+    private let stats = Protected(RxStats())
 
     private var parser = DumplStreamParser()
     private var ioThread: Thread?
@@ -150,6 +151,7 @@ final class ExternalAccessoryTransport: NSObject, DumplTransport, StreamDelegate
     var isOpen: Bool { running.value }
     var currentRoute: [UInt8] { route.value }
     var detectedSerial: String { serial.value }
+    var rxStats: RxStats { stats.value }
 
     var keepaliveFraming: Framing {
         get { framing.value }
@@ -335,6 +337,13 @@ final class ExternalAccessoryTransport: NSObject, DumplTransport, StreamDelegate
     private func handleInbound(_ bytes: [UInt8]) {
         scanForSerial(bytes)
         let frames = parser.feed(bytes)
+        stats.withLock { current in
+            current.bytes += bytes.count
+            current.framesDecoded += frames.count
+            if current.preview.count < 256 {
+                current.preview.append(contentsOf: bytes.prefix(256 - current.preview.count))
+            }
+        }
         if let seen = parser.lastRoute { route.value = seen }
         guard let sink = listener.value else { return }
         for frame in frames {
