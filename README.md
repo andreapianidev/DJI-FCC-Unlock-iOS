@@ -7,11 +7,13 @@
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-iOS%2017%2B-black?style=flat-square&logo=apple)](#)
 [![Confirmed](https://img.shields.io/badge/RC--N3%20%2B%20DJI%20Neo-confirmed%20on%20hardware-34D399?style=flat-square)](#-confirmed-on-hardware)
+[![Website](https://img.shields.io/badge/Website-andreapiani.com-0A84FF?style=flat-square)](https://www.andreapiani.com/dji-fcc-unlock-ios.html)
 
 **The first FCC unlock built natively for iPhone.** No server, no account, no
 tracking. Everything runs on device.
 
-An app by [Andrea Piani](https://www.andreapiani.com).
+An app by [Andrea Piani](https://www.andreapiani.com). Project page and FAQ:
+[andreapiani.com/dji-fcc-unlock-ios](https://www.andreapiani.com/dji-fcc-unlock-ios.html).
 
 </div>
 
