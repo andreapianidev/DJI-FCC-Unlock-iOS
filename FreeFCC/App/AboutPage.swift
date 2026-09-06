@@ -134,7 +134,7 @@ struct AboutPage: View {
                     """
                 )
                 DividerLine().padding(.vertical, 16)
-                InfoRow(label: "Version", value: "1.3")
+                InfoRow(label: "Version", value: "1.4")
                 InfoRow(label: "License", value: "GPL-3.0")
                 InfoRow(label: "Protocol", value: "DUML")
                 InfoRow(label: "Transport", value: "MFi ExternalAccessory")

@@ -221,19 +221,26 @@ enum ConfigRead {
 /// and power-cycle to reset.
 enum SpeedBoost {
     static let writeByHash = 0xF9
-    private static func u16(_ v: Int) -> [UInt8] { [UInt8(v & 0xFF), UInt8((v >> 8) & 0xFF)] }
+
+    /// A 32-bit float, little-endian, as the config table stores these
+    /// attitude and velocity parameters. The v1.3 integer writes were ignored
+    /// on hardware (full-stick Sport still capped at the normal speed), which
+    /// is the signature of the wrong width: these parameters are floats.
+    private static func f32(_ v: Float) -> [UInt8] {
+        withUnsafeBytes(of: v.bitPattern.littleEndian) { Array($0) }
+    }
 
     static let params: [GateParam] = [
-        GateParam(name: "control.atti_limit_0", hash: 0x9f9646e9, value: u16(45),
-                  note: "raise the cap on atti_range first"),
-        GateParam(name: "control.atti_range_0", hash: 0x9da51eee, value: u16(40),
-                  note: "max tilt in GPS/Sport, drives horizontal speed"),
-        GateParam(name: "control.horiz_vel_atti_range_0", hash: 0xde0fff00, value: u16(40),
-                  note: "horizontal-velocity attitude range"),
-        GateParam(name: "control.vert_up_vel_0", hash: 0x3d45f2c8, value: u16(6),
-                  note: "max ascent speed, currently ~3 m/s"),
-        GateParam(name: "control.vert_down_vel_0", hash: 0x70dbcaa7, value: u16(6),
-                  note: "max descent speed"),
+        GateParam(name: "control.atti_limit_0", hash: 0x9f9646e9, value: f32(45),
+                  note: "raise the cap on atti_range first (degrees)"),
+        GateParam(name: "control.atti_range_0", hash: 0x9da51eee, value: f32(40),
+                  note: "max tilt in GPS/Sport, drives horizontal speed (degrees)"),
+        GateParam(name: "control.horiz_vel_atti_range_0", hash: 0xde0fff00, value: f32(40),
+                  note: "horizontal-velocity attitude range (degrees)"),
+        GateParam(name: "control.vert_up_vel_0", hash: 0x3d45f2c8, value: f32(6),
+                  note: "max ascent speed m/s, was ~3"),
+        GateParam(name: "control.vert_down_vel_0", hash: 0x70dbcaa7, value: f32(6),
+                  note: "max descent speed m/s"),
     ]
 }
 

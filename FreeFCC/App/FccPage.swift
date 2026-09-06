@@ -293,7 +293,7 @@ private struct AppHeader: View {
                         glow = 0.95
                     }
                 }
-            Text(kind.isEmpty ? "v1.3 for iOS" : "v1.3 for iOS · \(kind)")
+            Text(kind.isEmpty ? "v1.4 for iOS" : "v1.4 for iOS · \(kind)")
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(Palette.textDim)
         }
