@@ -144,9 +144,10 @@ final class FccController {
     /// Interfaces present before the cable went in, so the diff after it does
     /// is unambiguous.
     private let baselineInterfaces = Protected(Set<String>())
-    /// Every inbound frame tallied by sender, destination and command, so the
-    /// real conversation on the link can be read rather than guessed at.
-    private let frameCensus = Protected([Int: Int]())
+    /// Every inbound frame tallied by sender, destination and command, with a
+    /// sample of the most recent payload, so the real conversation on the link
+    /// can be read rather than guessed at.
+    private let frameCensus = Protected([Int: (count: Int, sample: [UInt8])]())
 
     private var repeatTimer: DispatchSourceTimer?
     private var serialPollTask: Task<Void, Never>?
@@ -242,6 +243,7 @@ final class FccController {
             log("Close DJI Fly and plug the phone into the TOP USB port.")
         }
 
+        frameCensus.value = [:]
         let deadline = Date().addingTimeInterval(Self.connectTimeout)
         var warned = false
 
@@ -425,15 +427,7 @@ final class FccController {
         postLog("First bytes on the link:")
         postLog(rx.previewHex)
 
-        let census = frameCensus.value
-        let top = census.sorted { $0.value > $1.value }.prefix(15)
-        postLog("Inbound frames by kind, \(census.count) distinct:")
-        for (key, count) in top {
-            postLog(String(
-                format: "  %02X->%02X set=%02X id=%02X  x%d",
-                (key >> 24) & 0xFF, (key >> 16) & 0xFF, (key >> 8) & 0xFF, key & 0xFF, count
-            ))
-        }
+        postLog("Census has \(frameCensus.value.count) distinct frame kinds. Dump Traffic for the full list.")
         if rx.framesDecoded == 0 && rx.bytes > 0 {
             // The link is carrying data the parser cannot make sense of, which
             // is a framing problem, not an aircraft that ignored us. The head
@@ -498,7 +492,12 @@ final class FccController {
     /// Runs on the transport's IO thread, so it only touches the boxes.
     private nonisolated func handleResponseOffMain(_ response: DumplResponse) {
         let key = (response.sender << 24) | (response.dst << 16) | (response.cmdSet << 8) | response.cmdId
-        frameCensus.withLock { $0[key, default: 0] += 1 }
+        frameCensus.withLock {
+            var entry = $0[key] ?? (0, [])
+            entry.count += 1
+            entry.sample = response.payload
+            $0[key] = entry
+        }
 
         // The controller streams telemetry non-stop. Logging every frame buries
         // the useful lines, so only responses to commands we just sent count.
@@ -743,6 +742,41 @@ final class FccController {
             } else {
                 self.postLog("  probe done, \(hits.count) destination(s) answered")
             }
+        }
+    }
+
+    /// Prints everything the drone has been broadcasting, full payloads and
+    /// all, sorted by how much it talks.
+    ///
+    /// Entirely passive. It sends nothing. The value is in the frames the
+    /// aircraft emits on its own: a DUML link tends to broadcast its own state,
+    /// so the RADIO set, especially the status push, is where the current
+    /// region and power limits are most likely to be legible. Reading them is
+    /// the ground truth the DJI Fly graph only hints at, and after an apply it
+    /// is how we would see the region actually move.
+    func dumpTraffic() {
+        let census = frameCensus.value
+        guard !census.isEmpty else {
+            log("No traffic captured yet. Connect and wait a few seconds first.")
+            return
+        }
+        log("Full inbound census, \(census.count) distinct frame kinds:")
+        let sorted = census.sorted { $0.value.count > $1.value.count }
+        for (key, entry) in sorted {
+            let sender = (key >> 24) & 0xFF
+            let dst = (key >> 16) & 0xFF
+            let set = (key >> 8) & 0xFF
+            let id = key & 0xFF
+            let hex = entry.sample.prefix(24).map { String(format: "%02X", $0) }.joined(separator: " ")
+            let flag = set == 0x06 ? " <-RADIO" : ""
+            log(String(format: "  %02X->%02X set=%02X id=%02X x%d%@", sender, dst, set, id, entry.count, flag))
+            if !hex.isEmpty { log("      [\(hex)]") }
+        }
+        // Call out the RADIO status push specifically, since that is the frame
+        // most likely to carry the region byte.
+        for (key, entry) in sorted where ((key >> 8) & 0xFF) == 0x06 {
+            log(String(format: "RADIO frame set=06 id=%02X full payload:", key & 0xFF))
+            log(entry.sample.map { String(format: "%02X", $0) }.joined(separator: " "))
         }
     }
 
