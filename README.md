@@ -117,18 +117,37 @@ closes. That warm window is what the app needs.
 5. Open FCC Unlock, tap **Connect**, wait for the green line with the aircraft
    serial, then tap **Enable FCC Mode** and let the sweep finish. A line like
    `profile@02/RCLink: 38 responses` means the aircraft answered.
-6. Reopen DJI Fly, check the Transmission tab. FCC power shows on the signal
-   graph reaching past the 1km reference.
+6. Do **not** reopen DJI Fly straight away. Reopening it right after the unlock
+   drops the radio back to CE every time (see the sequence below).
 
-FCC is RAM-based, so on some aircraft it persists across a power cycle and on
-others it reverts to CE; if it reverts, repeat the steps. The app also
-re-applies on an interval while it holds the link.
+### Making FCC stick (confirmed on hardware, RC-N3 + DJI Neo)
 
-> **Altitude note.** The app sets the aircraft's own height ceiling to 500m, but
-> DJI Fly enforces a separate altitude cap from your GPS location: in the EU that
-> is 120m, and it stays 120m even with FCC power active, because that limit lives
-> in the DJI Fly app, not in the drone. Raising it is a DJI Fly / location matter,
-> not something this drone-side app changes.
+Reopening DJI Fly immediately after the unlock loses FCC: DJI Fly renegotiates
+the region on connect and the radio falls back to CE. The sequence that holds,
+observed on hardware:
+
+1. Start DJI Fly, let the drone link, then run the unlock in FCC Unlock
+   (Connect, then Enable FCC Mode).
+2. Close DJI Fly.
+3. Power the **controller** off, then the **drone** off.
+4. Power the controller back on, with the iPhone still cabled and FCC Unlock
+   still holding the link.
+5. Power the drone back on and let it relink.
+6. Open DJI Fly, Transmission tab. FCC power is there and holds, matching the
+   signal-graph screenshot in this repo.
+
+FCC is RAM-based and the app re-applies on an interval while it holds the link,
+which is what survives the power cycle here. If it ever reverts, repeat from
+step 1.
+
+> **Altitude, what the hardware actually reports.** The app writes the aircraft's
+> `flying_limit.max_height` to 500 and the flight controller acknowledges it with
+> status OK, but reading the value back the drone reports **120**, not 500: the
+> `0xF9` reply carries `00 8A 23 71 03 78 00`, where `78 00` is 120. So the 120m
+> ceiling is enforced drone-side too, not only inside DJI Fly, and `max_height`
+> alone does not lift it. The parameter that actually governs a real 500m unlock
+> is still being reverse engineered (issue #1). FCC **power** is a separate matter
+> and works.
 
 ## 🧭 How it works
 
