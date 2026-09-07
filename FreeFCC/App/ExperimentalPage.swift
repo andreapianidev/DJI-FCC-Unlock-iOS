@@ -153,6 +153,31 @@ struct ExperimentalPage: View {
             }
 
             GlowCard {
+                Text("Record a Sport flight (measure peak km/h)")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Palette.textWhite)
+                    .padding(.bottom, 6)
+                BodyText(
+                    """
+                    The ground truth for the speed goal. Tap this, then fly Sport with full \
+                    stick forward in open space for about half a minute. The app watches the \
+                    drone's own telemetry and records the peak horizontal speed, so we measure \
+                    the real km/h without opening DJI Fly, which would reset our writes. Reads \
+                    only, sends nothing. The peak lands in the Log tab at the end.
+                    """,
+                    color: Palette.textGray
+                )
+                .padding(.bottom, 14)
+                if controller.isConnected {
+                    GlowButton(title: "Record Sport Flight (safe, 30s)", tint: Palette.green, filled: false) {
+                        controller.recordFlight()
+                    }
+                } else {
+                    BodyText("Connect on the FCC tab first.", color: Palette.textDim)
+                }
+            }
+
+            GlowCard {
                 HStack(spacing: 10) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(Palette.red)

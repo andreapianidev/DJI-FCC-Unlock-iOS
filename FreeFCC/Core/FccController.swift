@@ -1349,6 +1349,64 @@ final class FccController {
         postLog("Telemetry read done.")
     }
 
+    /// Continuous, passive flight recorder. Samples the OSD frame the flight
+    /// controller already streams and tracks the peak horizontal speed and
+    /// height over a window, so a Sport-mode flight yields a real measured km/h
+    /// without DJI Fly, whose reconnect resets our runtime writes. It writes
+    /// nothing: it only reads the census the app already collects, on its own
+    /// queue so the link-hold timer is untouched.
+    func recordFlight(seconds: Int = 30) {
+        guard requireConnection() else { return }
+        log("Experimental: recording flight telemetry for \(seconds)s (passive, reads only)")
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            self?.recordFlightSync(seconds: seconds)
+        }
+    }
+
+    private nonisolated func recordFlightSync(seconds: Int) {
+        func latestOsd() -> [UInt8]? {
+            frameCensus.value.first {
+                (($0.key >> 8) & 0xFF) == SpeedExperiment.flycSet && ($0.key & 0xFF) == 0x43
+            }?.value.sample
+        }
+        guard latestOsd() != nil else {
+            postLog("No OSD (0x43) frame yet. Make sure the drone is linked, then start again.")
+            return
+        }
+        postLog("Recording. Fly Sport, full stick forward, in open space. Peaks appear below.")
+        var peakKmh = 0.0
+        var peakHeight = 0.0
+        var samples = 0
+        var lastLog = Date.distantPast
+        let deadline = Date().addingTimeInterval(Double(seconds))
+        while Date() < deadline {
+            if let osd = latestOsd(), !osd.allSatisfy({ $0 == 0 }) {
+                samples += 1
+                if let kmh = OsdGeneral.horizontalKmh(osd), kmh > peakKmh {
+                    peakKmh = kmh
+                    postLog(String(format: "  new peak %.1f km/h  mode %@", kmh, OsdGeneral.flightMode(osd)))
+                }
+                if let h = OsdGeneral.heightMeters(osd), h > peakHeight { peakHeight = h }
+                if Date().timeIntervalSince(lastLog) > 2 {
+                    lastLog = Date()
+                    let now = OsdGeneral.horizontalKmh(osd) ?? 0
+                    let h = OsdGeneral.heightMeters(osd) ?? 0
+                    postLog(String(format: "  now %.1f km/h, %.1f m, mode %@", now, h, OsdGeneral.flightMode(osd)))
+                }
+            }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        postLog("Recording done.")
+        postLog(String(format: "PEAK horizontal speed %.1f km/h,  PEAK height %.1f m,  %d live samples", peakKmh, peakHeight, samples))
+        if peakKmh <= 0 {
+            postLog("Peak stayed 0. Either the OSD speed field is not updating over this link, or the drone did not move while recording.")
+        } else if peakKmh < 30 {
+            postLog("Under ~30 km/h: the Sport cap (28.8) still holds, so the boost did not lift the horizontal limit.")
+        } else {
+            postLog("Above the 28.8 Sport cap: the boost moved the limit. Note the number, we iterate the values up toward 60.")
+        }
+    }
+
     /// Warmth check. Writes max_height, the value the FCC apply already sets, and
     /// looks for its 0xF9 echo. That echo only comes back when the controller is
     /// relaying to the aircraft, so max_height doubles as a link-warmth sensor:
