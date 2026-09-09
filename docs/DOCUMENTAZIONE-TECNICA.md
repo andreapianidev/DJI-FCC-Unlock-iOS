@@ -788,6 +788,17 @@ Parameters):
 | `control.atti_limit_0` | `0x9f9646e9` | Limita il massimo di `atti_range` |
 | `control.horiz_emergency_brake_tilt_max_0` | `0x3d833d3a` | Inclinazione massima in frenata d'emergenza |
 
+Valori scritti da Boost Sport Speed, tutti float32 little-endian, ognuno nella
+sua finestra service-mode e riletto dall'eco 0xF9:
+
+| Parametro | Hash | Scritto | Perché |
+|---|---|---|---|
+| `control.atti_limit_0` | `0x9f9646e9` | 45.0 gradi | Alza prima il tetto di `atti_range` |
+| `control.atti_range_0` | `0x9da51eee` | 40.0 gradi | Inclinazione massima in GPS/Sport, guida la velocità orizzontale |
+| `control.horiz_vel_atti_range_0` | `0xde0fff00` | 40.0 gradi | Range di assetto per la velocità orizzontale |
+| `control.vert_up_vel_0` | `0x3d45f2c8` | 6.0 m/s | Velocità massima di salita, circa 3 sul Neo di serie |
+| `control.vert_down_vel_0` | `0x70dbcaa7` | 6.0 m/s | Velocità massima di discesa |
+
 La sonda Read Attitude Parameters copre anche
 `advanced_function.height_limit_enabled`, `novice_cfg.max_height` e
 `airport_limit_cfg.cfg_disable_airport_fly_limit`, e stamperebbe tipo,

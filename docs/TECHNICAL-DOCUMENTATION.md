@@ -786,6 +786,17 @@ Parameters):
 | `control.atti_limit_0` | `0x9f9646e9` | Caps the maximum of `atti_range` |
 | `control.horiz_emergency_brake_tilt_max_0` | `0x3d833d3a` | Emergency-brake tilt maximum |
 
+Values written by Boost Sport Speed, all little-endian float32, each inside
+its own service window and read back from the 0xF9 echo:
+
+| Parameter | Hash | Written | Why |
+|---|---|---|---|
+| `control.atti_limit_0` | `0x9f9646e9` | 45.0 deg | Raise the cap on `atti_range` first |
+| `control.atti_range_0` | `0x9da51eee` | 40.0 deg | Max tilt in GPS/Sport, drives horizontal speed |
+| `control.horiz_vel_atti_range_0` | `0xde0fff00` | 40.0 deg | Horizontal-velocity attitude range |
+| `control.vert_up_vel_0` | `0x3d45f2c8` | 6.0 m/s | Max ascent speed, about 3 on the stock Neo |
+| `control.vert_down_vel_0` | `0x70dbcaa7` | 6.0 m/s | Max descent speed |
+
 The Read Attitude Parameters probe also covers
 `advanced_function.height_limit_enabled`, `novice_cfg.max_height` and
 `airport_limit_cfg.cfg_disable_airport_fly_limit`, and would print the type,
