@@ -12,6 +12,7 @@ dopo deve poter capire la logica, riprodurre i risultati, e sapere dove mettere
 le mani per estendere l'app senza ripartire da zero.
 
 Autore, Andrea Piani, www.andreapiani.com.
+Questa revisione corrisponde alla versione 1.7 (build 8) dell'app, settembre 2026.
 
 ---
 
@@ -33,11 +34,11 @@ Autore, Andrea Piani, www.andreapiani.com.
 14. [Lettura della regione, il limite onesto](#14-lettura-della-regione-il-limite-onesto)
 15. [I comandi RC power mode documentati](#15-i-comandi-rc-power-mode-documentati)
 16. [Il ripristino CE](#16-il-ripristino-ce)
-17. [La parte sperimentale, parametri di velocità e altitudine](#17-la-parte-sperimentale-parametri-di-velocità-e-altitudine)
+17. [La scheda Experimental, lettura e scrittura dei parametri del flight controller](#17-la-scheda-experimental-lettura-e-scrittura-dei-parametri-del-flight-controller)
 18. [Diagnostica, census e sonde](#18-diagnostica-census-e-sonde)
 19. [Come leggere un log di sessione](#19-come-leggere-un-log-di-sessione)
 20. [Mappa del codice](#20-mappa-del-codice)
-21. [Direzioni di sviluppo future](#21-direzioni-di-sviluppo-future)
+21. [A che punto siamo, e cosa viene dopo](#21-a-che-punto-siamo-e-cosa-viene-dopo)
 
 ---
 
@@ -393,8 +394,8 @@ che l'ha chiesta è `(cmdSet << 8) | cmdId`.
 
 Il cuore dell'app. Il profilo è un file JSON leggibile,
 `FreeFCC/Resources/profiles/fcc.json`, così ogni byte inviato è ispezionabile
-sulla scheda Profile dell'app. Ventuno frame, in due giri, dentro una singola
-finestra service-mode.
+sulla scheda Profile dell'app. Ventidue frame, in due giri, dentro una singola
+finestra service-mode: un AUTOTEST enter, venti write e un AUTOTEST exit.
 
 Ecco cosa fa ciascun frame e perché.
 
@@ -421,7 +422,7 @@ Ecco cosa fa ciascun frame e perché.
 | 19 | 6/140 | 9 | `000300` | **RADIO set parameter 03**. |
 | 20 | 6/140 | 9 | `000100` | **RADIO set parameter 01**. |
 | 21 | 6/114 | 6 | `000000000001ff` | **RADIO commit region change**, chiude e conferma il cambio regione. |
-| (chiusura) | 16/88 | 18 | `030100` | **AUTOTEST exit**, chiude il service mode. |
+| 22 | 16/88 | 18 | `030100` | **AUTOTEST exit**, chiude il service mode. |
 
 Prima di ogni giro l'app manda anche un **assistant unlock** (set 0x03, id 0xDF,
 dst 0x03, payload `01 00 00 00`, cmd_type 0x40), che sblocca il flight controller
@@ -431,7 +432,7 @@ finestra service-mode.
 
 ### 9.1 Le tre famiglie di comandi
 
-I ventuno frame ricadono in tre gruppi, con tre destinazioni logiche diverse:
+I ventidue frame ricadono in tre gruppi, con tre destinazioni logiche diverse:
 
 - **Regione e potenza radio**, verso telecomando e link (set 6 RADIO, set 7
   WIFI, set 9 OFDM, set 0 GENERAL con i codici paese). Sono la parte che sposta
@@ -462,7 +463,7 @@ Questo è il vincolo che rende o rompe un apply, ed è la ragione di scelte di
 concorrenza precise nel codice.
 
 Il frame 1 (AUTOTEST enter) apre una finestra service-mode. Il frame di chiusura
-(AUTOTEST exit) la chiude. Tutti i ventuno frame in mezzo devono atterrare dentro
+(AUTOTEST exit) la chiude. I venti frame in mezzo devono atterrare dentro
 quella finestra. Se il burst si allunga oltre pochi secondi, la finestra si
 chiude prima, i write successivi cadono nel vuoto, e la radio resta
 silenziosamente su CE mentre ogni singolo write risulta "inviato con successo".
@@ -491,7 +492,7 @@ sequenceDiagram
     participant Drone
     App->>RC: AUTOTEST enter (apre finestra)
     App->>RC: assistant unlock
-    loop 2 giri x ~21 frame, 30ms/frame
+    loop 2 giri x 22 frame, 30ms/frame
         App->>RC: RADIO / WIFI / OFDM set (regione, potenza)
         App->>Drone: FLYCONTROLLER write (max_height 500)
     end
@@ -677,56 +678,121 @@ l'apply fa lo sweep.
 
 ---
 
-## 17. La parte sperimentale, parametri di velocità e altitudine
+## 17. La scheda Experimental, lettura e scrittura dei parametri del flight controller
 
-`FreeFCC/Core/Experimental.swift` e `probeSpeedParams()`. Al momento è sola
-lettura. Legge parametri del flight controller indirizzati per hash del nome,
-con gli stessi comandi by-hash che il profilo FCC già usa:
+`FreeFCC/Core/Experimental.swift` contiene le tabelle dei parametri, le sonde
+stanno in `FccController` sotto i mark `Experimental`. Tutto qui indirizza la
+config table del flight controller per hash del nome del parametro, sul command
+set FLYCONTROLLER (0x03), con gli stessi verbi by-hash che il profilo FCC già
+usa. Gli hash vengono dalle tabelle pubbliche di dji-firmware-tools e sono stati
+verificati con la funzione name-hash di DJI: i parametri noti riproducono bit per
+bit gli hash documentati, quindi i candidati generati indirizzano parametri reali
+quando esistono e vengono ignorati quando non esistono.
 
-| Comando | id | Cosa fa |
+Cosa fa ogni verbo su questo firmware (RC-N3 + DJI Neo, FW v00.05.00.12):
+
+| Verbo | id | Su questo firmware |
 |---|---|---|
-| Get Param Info By Hash | 0xF7 | Restituisce tipo, dimensione, min, max e default che il firmware impone |
-| Read Value By Hash | 0xF8 | Legge il valore corrente |
-| Write Value By Hash | 0xF9 | Scrive un valore (non usato dalla lettura) |
+| Get Param Info By Hash | 0xF7 | Nessuna risposta, provato su sender 0x82/0x02, cmd_type 0x20/0x40 e dst 0x03/0x92, ognuno nella sua finestra service-mode |
+| Read Value By Hash | 0xF8 | Nessuna risposta, stessa scansione |
+| Write Value By Hash | 0xF9 | Risponde. Per i parametri limite la risposta porta status + hash + il valore davvero memorizzato; per i parametri di controllo porta solo lo status |
+| Read Params By Hash, multiplo | 0xFB | Inviato dalla v1.2 (byte flag + hash, scansione su flag, cmd_type e dst). Nessun risultato hardware ancora registrato |
 
-I parametri letti, con i loro hash (dalle tabelle pubbliche dji-firmware-tools):
+Quindi il canale di lettura che esiste oggi è l'eco del write `0xF9`, e solo per
+i parametri limite. Questo singolo fatto dà forma a tutto quello che segue.
+
+### 17.1 I sei strumenti
+
+| Pulsante sulla scheda | Metodo | Scrive | Cosa fa |
+|---|---|---|---|
+| Read Attitude Parameters | `probeSpeedParams()` | niente | Sonda 0xF7/0xF8 in due fasi. La fase 1 cerca un contesto di lettura che risponda, usando `max_height` come valore noto; la fase 2 legge ogni parametro su quello. In caso di fallimento scarica il census del set 0x03, così una risposta con chiave sbagliata resta visibile |
+| Probe 500m Gate | `probeAltitudeGate()` | limiti di altitudine e geo | Scrive un candidato alla volta e decodifica l'eco 0xF9, per bisezionare verso il parametro che apre lo slider di DJI Fly oltre 120 (v1.1) |
+| Read via 0xFB | `probeReadFB()` | niente | Lettura pura dei valori geo/authority e dei range di assetto via 0xFB, scansionando flag, cmd_type e dst finché uno risponde (v1.2) |
+| Read Flight Telemetry | `readTelemetry()` | niente | Decodifica l'ultimo push OSD General (set 0x03, id 0x43): quota, velocità al suolo da Vgx/Vgy, modalità di volo; più il push Limit State (id 0x55) (v1.2) |
+| Record Sport Flight | `recordFlight(seconds:)` | niente | Campiona il push OSD per 30 secondi su una coda propria e riporta il picco di velocità orizzontale e di quota, la verità di terra per il lavoro sulla velocità (v1.6) |
+| Boost Sport Speed | `applySpeedBoost()` | parametri di controllo del volo | Controllo di warmth, poi write float32 di `atti_limit` 45, `atti_range` 40, `horiz_vel_atti_range` 40 (gradi), `vert_up_vel` 6 e `vert_down_vel` 6 (m/s), ognuno con il suo eco 0xF9 (da v1.3 a v1.5) |
+
+I pulsanti verdi leggono soltanto. Quello ambra scrive limiti, la classe di
+parametri che l'apply FCC già scrive. Quello rosso scrive parametri di controllo,
+che cambiano come il drone si comporta: è territorio di sicurezza del volo e va
+volato basso e lento in spazio aperto. Ogni write è solo in RAM, un ripristino CE
+o un power cycle lo azzera.
+
+### 17.2 La disciplina della finestra
+
+Ogni lettura o scrittura sta dentro la sua finestra service-mode stretta: AUTOTEST
+enter, assistant unlock (set 0x03, id 0xDF), il singolo frame, poi AUTOTEST exit,
+con una cattura di 200 ms sulla chiave di risposta attesa. Vale la stessa nota di
+timing del profilo: un burst allungato oltre pochi secondi silenziosamente non fa
+niente. La prima sonda teneva una sola finestra aperta su tutti i parametri, circa
+tre secondi, e per questo non riceveva risposta. I write si provano prima su dst
+0x03 e poi sulla rotta SVO 0x92 se non arriva eco.
+
+### 17.3 Cosa ha detto l'hardware
+
+- `max_height` scritto a 500 viene riconosciuto con status 0, ma l'eco è
+  `00 8A 23 71 03 78 00`: il drone memorizza 120. Riprodotto su più sessioni e di
+  nuovo dopo i write float della v1.4. Il tetto è imposto lato drone e
+  `max_height` da solo non lo alza (issue #1).
+- 0xF7 e 0xF8 non rispondono mai, in nessuna combinazione provata. Il flight
+  controller non è muto: durante la sonda il census lo mostra spingere sul set
+  0x03 (id 0xD7 a migliaia, id 0xCE dal responder dietro il sender 0x92, più
+  0x53, 0x09, 0x42). Le letture sono ignorate, non perse (issue #2).
+- I write interi della v1.3 sui parametri di assetto sono stati ignorati, lo
+  Sport a stick pieno è rimasto al tetto normale. È la firma della larghezza
+  sbagliata: questi parametri sono float a 4 byte, quindi dalla v1.4 si scrivono
+  come float32 little-endian. Il flight controller riporta i valori fuori range
+  al proprio massimo.
+- I write dei parametri di controllo tornano con status 0 e senza valore, a
+  differenza di `max_height`. L'eco da solo non dice se il valore è rimasto, ed
+  è per questo che esiste il registratore di volo: il picco di km/h misurato è
+  l'unica verità di terra (issue #3).
+
+### 17.4 Il warmth gate
+
+Un link freddo e un write sbagliato si presentano entrambi come "nessun eco".
+`linkIsWarm()` toglie l'ambiguità: scrive `max_height` (il valore che l'apply già
+imposta) e cerca il suo eco 0xF9, che torna solo quando il telecomando sta
+inoltrando al drone. Il boost Sport lo esegue per primo e su un link freddo non
+scrive niente, dicendo all'utente di scaldare DJI Fly fino alla camera live e
+riprovare entro circa quindici secondi. È un sensore di link, non di regione: non
+dice nulla su CE o FCC (issue #6).
+
+### 17.5 Le tabelle dei parametri
+
+Candidati del gate di altitudine, scritti uno alla volta da Probe 500m Gate:
+
+| Parametro | Hash | Scritto | Perché |
+|---|---|---|---|
+| `flying_limit.max_height_0` | `0x0371238a` | 500 (u16) | Il tetto che l'app già scrive; il drone lo riporta a 120 |
+| `advanced_function.height_limit_enabled_0` | `0xae52d19a` | 0 (u8) | Spegne l'applicazione del limite di quota (l'apply scrive 1) |
+| `novice_cfg.max_height_0` | `0xd9ab9f79` | 500 | Tetto in modalità principiante |
+| `airport_limit_cfg.cfg_disable_airport_fly_limit_0` | `0x8fb32a2d` | 1 | Disabilita i limiti aeroporto/NFZ |
+| `flying_limit.height_limit_num_0` | `0x11ce86a4` | 500 | Candidato, un valore di limite quota separato |
+| `flying_limit.height_limit_0` | `0x85ad07a3` | 500 | Candidato, limite di quota |
+| `flying_limit.max_height_type_0` | `0xa61867e2` | 1 | Candidato, tipo di limite o selettore di zona |
+| `flying_limit.enable_flying_limit_0` | `0x510882c8` | 0 | Candidato, disabilita del tutto il flying limit |
+| `flying_limit.limit_gps_not_ready_max_height_0` | `0x642acdc9` | 500 | Candidato, tetto con GPS non pronto |
+
+Parametri letti da Read via 0xFB (e, attraverso 0xF7/0xF8, da Read Attitude
+Parameters):
 
 | Parametro | Hash | A cosa serve |
 |---|---|---|
-| `flying_limit.max_height` | `0x0371238a` | Tetto altitudine. Deve leggere 500 dopo un apply, usato come auto-verifica |
-| `flying_limit.max_radius` | `0x425c0a94` | Tetto distanza |
-| `advanced_function.height_limit_enabled` | `0xae52d19a` | Se il tetto è applicato |
-| `novice_cfg.max_height` | `0xd9ab9f79` | Tetto in modalità principiante |
-| `airport_limit_cfg.cfg_disable_airport_fly_limit` | `0x8fb32a2d` | Se i limiti aeroporto/NFZ sono disabilitati |
-| `control.horiz_vel_atti_range` | `0xde0fff00` | Range di assetto che limita la velocità orizzontale |
-| `control.atti_range` | `0x9da51eee` | Range di assetto generale |
-| `control.horiz_emergency_brake_tilt_max` | `0x3d833d3a` | Inclinazione massima in frenata d'emergenza |
+| `flying_limit.max_height_0` | `0x0371238a` | Tetto di altitudine, l'auto-verifica (atteso 120) |
+| `flying_limit.max_radius_0` | `0x425c0a94` | Tetto di distanza |
+| `api_entry_cfg.authority_level_0` | `0x7b24ba4b` | Livello di autorità SDK/API, il candidato per il gate dei 500m |
+| `api_entry_cfg.height_data_type_0` | `0x96a0a2cf` | Tipo del dato di quota |
+| `control.atti_range_0` | `0x9da51eee` | Range di assetto, limita la velocità Sport |
+| `control.horiz_vel_atti_range_0` | `0xde0fff00` | Range di assetto per la velocità orizzontale |
+| `control.atti_limit_0` | `0x9f9646e9` | Limita il massimo di `atti_range` |
+| `control.horiz_emergency_brake_tilt_max_0` | `0x3d833d3a` | Inclinazione massima in frenata d'emergenza |
 
-### 17.1 La logica in due fasi
-
-La sonda ha una logica precisa presa dai fallimenti di letture precedenti:
-
-- **Fase 1**, trova il contesto di lettura che risponde. Usa `max_height` come
-  verità nota (deve valere 500 dopo un apply) e varia i due sconosciuti: il
-  cmd_type del verbo di lettura (il percorso di write risponde su 0x20, non sullo
-  0x40 che il vecchio probe usava) e la destinazione dietro cui vive il
-  responder della config (0x03, oppure la rotta SVO 0x92 che i write fb-param
-  provati usano).
-- **Fase 2**, letto il contesto vincente, legge ogni parametro su quello.
-
-Ogni lettura sta dentro la sua finestra service-mode stretta (AUTOTEST enter,
-assistant unlock, get info, read value, exit), perché la stessa nota di timing del
-profilo vale qui: un burst allungato oltre pochi secondi silenziosamente non fa
-niente. Il vecchio probe teneva una sola finestra aperta su tutti i parametri,
-circa 3 secondi, e per questo non rispondeva.
-
-### 17.2 Perché leggere prima di scrivere
-
-La risposta Get Info porta min, max e default che il firmware stesso impone. Sono
-quei limiti a rendere sicuro un write futuro: un cambio di velocità può restare
-dentro i confini che il flight controller già onora, invece di indovinare un
-numero preso da un video. Questa è la base per il lavoro futuro su velocità e
-altitudine sbloccate.
+La sonda Read Attitude Parameters copre anche
+`advanced_function.height_limit_enabled`, `novice_cfg.max_height` e
+`airport_limit_cfg.cfg_disable_airport_fly_limit`, e stamperebbe tipo,
+dimensione, min, max e default da una risposta Get Info se questo firmware ne
+desse mai una.
 
 ---
 
@@ -808,12 +874,12 @@ FreeFCC/
     RCLink.swift                envelope RCLink, parser dello stream in ingresso, DumplResponse
     DumplTransport.swift        protocollo trasporto, RxStats, bootstrap, keepalive
     ExternalAccessoryTransport.swift   trasporto MFi, ranking protocolli, due thread RX/TX, sniff del serial
-    FccController.swift         tutta la logica di business, connect, apply, sweep, hold, region, diagnostica
+    FccController.swift         tutta la logica di business, connect, apply, sweep, hold, region, diagnostica, sonde sperimentali
     ProfileLoader.swift         caricamento e decodifica dei profili JSON
-    Experimental.swift          parametri flight controller by-hash, parsing Get Info
+    Experimental.swift          tabelle dei parametri per hash: set di lettura, candidati del gate di altitudine, set 0xFB, valori del boost Sport, decoder OSD
     NetworkProbe.swift          enumerazione interfacce, sonda TCP verso gadget USB
     DiagnosticLog.swift         mirror del log su unified log e file container
-  App/                          schermate SwiftUI e design system
+  App/                          schermate SwiftUI (FCC, Log, Profile, Experimental, About) e design system
   Resources/profiles/
     fcc.json                    la sequenza FCC + 500m
     ce_restore.json             il ripristino CE a frame singolo
@@ -821,7 +887,7 @@ FreeFCCTests/                   test su frame, parser, profilo, altitudine
 docs/
   DOCUMENTAZIONE-TECNICA.md     questo documento (italiano)
   TECHNICAL-DOCUMENTATION.md    la versione inglese
-  screenshots/                  le immagini del README
+  screenshots/                  le immagini del README (per rifarle: build per simulatore, lancio con -initialTab N)
 ```
 
 Punti di ingresso per capire il flusso:
@@ -833,35 +899,52 @@ Punti di ingresso per capire il flusso:
   `sendPass`, più le note sul timing.
 - Per **il canale**, leggi `ExternalAccessoryTransport.swift` e le stringhe in
   `Info.plist`.
+- Per **le sonde sperimentali**, parti dalle tabelle in `Experimental.swift`, poi
+  i mark `Experimental` in `FccController.swift` (sezione 17).
 
 ---
 
-## 21. Direzioni di sviluppo future
+## 21. A che punto siamo, e cosa viene dopo
 
-Ciò che è fatto e confermato: potenza FCC su RC-N3 + DJI Neo. Il resto è reverse
-engineering aperto, mappato sulle issue del repository.
+Allineato alla versione 1.7 (build 8) dell'app. Fatto e confermato su hardware:
+potenza FCC su RC-N3 + DJI Neo. Il resto è reverse engineering aperto, mappato
+sulle issue del repository, e la scheda Experimental contiene già lo strumento
+che ogni issue richiede. Quello che manca, su ognuna, è un giro su hardware con
+il log postato.
 
-- **Sbloccare i 500m di altitudine (#1) e la velocità ~60 km/h (#3)**. Entrambi
-  sono reverse engineering lato drone, sui parametri del flight controller. La
-  base c'è: `Experimental.swift` legge già i parametri per hash e ne ricava min,
-  max e default. Il passo successivo è il write, dentro una finestra service-mode
-  come quella dell'apply, restando nei limiti che il Get Info riporta.
-- **Far rispondere la lettura della config-table (#2)**, lo strumento che sblocca
-  i due sopra. La sonda `probeSpeedParams` in due fasi è il lavoro corrente:
-  trovare il contesto (cmd_type, destinazione) su cui il flight controller
-  risponde alle letture by-hash. Prossime cose da provare, la lettura dell'intera
-  tabella con 0xFB, oppure infilare la lettura nello stesso burst di un write
-  provato.
-- **Eliminare lo step "apri prima DJI Fly" (#4)**, inizializzando il link da
-  soli. Serve replicare la sequenza di inizializzazione che DJI Fly manda per
-  svegliare il link telecomando-drone.
-- **Tester su RC-N1 / RC-N2 e altri droni (#5)**. Nessun codice richiesto, basta
-  un dispositivo e un log. I campi di `RxStats` e il census rendono un log utile
-  anche senza hardware in mano a chi legge.
-- **Rileggere la regione (#6)**, per un indicatore CE/FCC reale in-app. Bloccato
-  dal fatto che questo firmware non risponde ai comandi di lettura regione
-  provati. Il probe delle destinazioni e i comandi RC power mode documentati
-  (6/0x21 Get) sono i due fili da tirare.
+- **500m di altitudine (#1)**. Consegnato: la sonda del gate di altitudine (v1.1)
+  e la lettura 0xFB (v1.2). Noto: `max_height` viene memorizzato a 120 qualunque
+  valore si scriva. Prossimo passo: lanciare Probe 500m Gate, annotare quali
+  candidati il drone memorizza e quali riporta al limite, aprire DJI Fly dopo
+  ognuno e vedere se lo slider supera 120, poi bisezionare fino al gate e
+  aggiungerlo a `fcc.json`. Se niente lato drone lo apre, il tetto vive nella
+  logica delle zone GPS di DJI Fly.
+- **Una lettura della config table che funzioni (#2)**. Noto: 0xF7 e 0xF8 sono
+  morti su questo firmware, l'eco 0xF9 restituisce un valore solo per i limiti.
+  Consegnato: Read via 0xFB (v1.2), risultato non ancora registrato. Prossimo
+  passo: lanciarlo e postare il log. Se anche 0xFB è morto, l'eco del write resta
+  l'unico canale per i limiti e il registratore di volo resta la verità di terra
+  per i parametri di controllo.
+- **~60 km/h in Sport (#3)**. Consegnato: il boost a stadi come write float32
+  (v1.4), il warmth gate (v1.5) e il registratore di volo (v1.6). Noto: i write
+  interi sono stati ignorati, i write float vengono riconosciuti senza eco del
+  valore. Prossimo passo: un boost a link caldo seguito da Record Sport Flight,
+  stick pieno in spazio aperto, e il picco di km/h misurato decide se alzare i
+  valori. Limitato a circa 60, mai illimitato.
+- **Eliminare lo step "apri prima DJI Fly" (#4)**. Consegnato: il warmth gate,
+  che distingue un link freddo da un write sbagliato. Manca: l'inizializzazione
+  che DJI Fly manda e che mette il telecomando in inoltro. Prossimo passo: Dump
+  All Traffic subito dopo che DJI Fly si connette, trovare i frame che la
+  direzione app-telecomando porta, aggiungere il minimo alla sequenza di
+  connessione. Il successo sono 38 risposte a freddo.
+- **Tester su RC-N1 / RC-N2 e altri droni (#5)**. Ancora confermato su una sola
+  coppia. Nessun codice richiesto: un dispositivo, il pulsante di condivisione
+  della scheda Log, e la stringa di protocollo che il telecomando annuncia.
+- **Rileggere la regione (#6)**. Niente nell'app la decodifica ancora. La pista è
+  il push di stato RADIO (set 0x06, id 0x05) che il telecomando trasmette di
+  continuo: catturarlo in CE e di nuovo dopo un apply FCC, confrontare il payload,
+  poi pilotare da lì un badge CE/FCC dal vivo. Il warmth gate è un sensore di
+  link, non di regione.
 
 Ogni issue elenca cosa è noto, gli hash e i comandi esatti, e il prossimo passo
 concreto. Il modo più veloce per contribuire resta far girare l'app su hardware

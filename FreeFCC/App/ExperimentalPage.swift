@@ -9,9 +9,11 @@ import SwiftUI
 /// Experimental flight-parameter tools, kept on their own tab and behind a
 /// warning so nothing here is a stray tap away.
 ///
-/// Step one is read only. It reads the attitude parameters that cap horizontal
-/// speed, and the bounds the firmware enforces on them, so any later change is
-/// informed by the drone's own limits rather than a number from a video.
+/// Green buttons only read: the 0xF7/0xF8 and 0xFB probes, the telemetry
+/// decode and the flight recorder. Two buttons write: the amber altitude-gate
+/// probe writes altitude/geo limits, the red Sport boost writes flight-control
+/// parameters and needs a low-and-slow flight test. Every write is RAM-only and
+/// a power cycle resets it.
 struct ExperimentalPage: View {
     @Environment(FccController.self) private var controller
 
@@ -32,11 +34,12 @@ struct ExperimentalPage: View {
                     """
                     These parameters change how the aircraft flies, not just what region it \
                     reports. Unlike the FCC and altitude settings, a wrong value here can make \
-                    the drone hard to control or unstable. Everything on this tab is read only \
-                    for now: it inspects the flight controller, it does not change it.
+                    the drone hard to control or unstable.
 
-                    Read first, understand the numbers, then decide. Any change that comes later \
-                    will be small, staged, and tested low and slow in open space.
+                    Green buttons only read and are safe. The amber one writes altitude and geo \
+                    limits. The red one writes flight-control parameters and must be flown low \
+                    and slow in open space. Every write is RAM-only: Restore CE or a power \
+                    cycle resets it. Read first, understand the numbers, then decide.
                     """,
                     color: Palette.textGray
                 )

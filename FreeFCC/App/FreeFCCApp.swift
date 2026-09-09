@@ -85,3 +85,11 @@ struct PageBackground<Content: View>: View {
         }
     }
 }
+
+/// The version and build the bundle was built with, so every screen and the
+/// log header show the same number and a bump only touches project.yml.
+enum AppInfo {
+    static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+    static let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+    static var versionAndBuild: String { "\(version) (\(build))" }
+}

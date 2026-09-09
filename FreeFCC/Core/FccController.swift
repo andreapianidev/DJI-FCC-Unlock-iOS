@@ -173,7 +173,7 @@ final class FccController {
         }
         preferredProtocol = defaults.string(forKey: Keys.preferredProtocol) ?? ""
         DiagnosticLog.shared.startSession(header: [
-            "FCC Unlock iOS \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?") build \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?")",
+            "FCC Unlock iOS \(AppInfo.version) build \(AppInfo.build)",
             "Device \(UIDevice.current.model) iOS \(UIDevice.current.systemVersion)",
             "Started \(ISO8601DateFormatter().string(from: Date()))",
             "Declared protocols: \(ExternalAccessoryTransport.declaredProtocols.joined(separator: ", "))"

@@ -69,7 +69,10 @@ struct AboutPage: View {
 
                     Altitude ceiling, by writing the flight controller's max-height parameter to \
                     500m and enforcing it. 500m is DJI's own standard maximum, not an override \
-                    beyond it.
+                    beyond it. Honest note: on the DJI Neo the flight controller accepts the \
+                    write but reports the ceiling back as 120m, so the parameter that governs a \
+                    real 500m unlock is still being reverse engineered (issue #1 on GitHub). \
+                    FCC power is separate and works.
 
                     Both are RAM-only and revert when the aircraft and controller are power \
                     cycled, so they are re-applied each session.
@@ -140,7 +143,7 @@ struct AboutPage: View {
                     """
                 )
                 DividerLine().padding(.vertical, 16)
-                InfoRow(label: "Version", value: "1.6")
+                InfoRow(label: "Version", value: AppInfo.versionAndBuild)
                 InfoRow(label: "License", value: "PolyForm NC 1.0.0")
                 InfoRow(label: "Protocol", value: "DUML")
                 InfoRow(label: "Transport", value: "MFi ExternalAccessory")

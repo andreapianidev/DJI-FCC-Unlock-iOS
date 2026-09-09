@@ -12,6 +12,7 @@ next should be able to understand the logic, reproduce the results, and know
 where to put their hands to extend the app without starting from scratch.
 
 Author, Andrea Piani, www.andreapiani.com.
+This revision matches app version 1.7 (build 8), September 2026.
 
 ---
 
@@ -33,11 +34,11 @@ Author, Andrea Piani, www.andreapiani.com.
 14. [Reading the region, the honest limit](#14-reading-the-region-the-honest-limit)
 15. [The documented RC power mode commands](#15-the-documented-rc-power-mode-commands)
 16. [The CE restore](#16-the-ce-restore)
-17. [The experimental part, speed and altitude parameters](#17-the-experimental-part-speed-and-altitude-parameters)
+17. [The Experimental tab, reading and writing flight-controller parameters](#17-the-experimental-tab-reading-and-writing-flight-controller-parameters)
 18. [Diagnostics, census and probes](#18-diagnostics-census-and-probes)
 19. [How to read a session log](#19-how-to-read-a-session-log)
 20. [Code map](#20-code-map)
-21. [Future development directions](#21-future-development-directions)
+21. [Where things stand, and what is next](#21-where-things-stand-and-what-is-next)
 
 ---
 
@@ -391,8 +392,8 @@ that asked for it is `(cmdSet << 8) | cmdId`.
 
 The heart of the app. The profile is a readable JSON file,
 `FreeFCC/Resources/profiles/fcc.json`, so every byte sent can be inspected on
-the app's Profile tab. Twenty-one frames, in two rounds, inside a single
-service-mode window.
+the app's Profile tab. Twenty-two frames, in two rounds, inside a single
+service-mode window: an AUTOTEST enter, twenty writes, and an AUTOTEST exit.
 
 Here is what each frame does and why.
 
@@ -419,7 +420,7 @@ Here is what each frame does and why.
 | 19 | 6/140 | 9 | `000300` | **RADIO set parameter 03**. |
 | 20 | 6/140 | 9 | `000100` | **RADIO set parameter 01**. |
 | 21 | 6/114 | 6 | `000000000001ff` | **RADIO commit region change**, closes and confirms the region change. |
-| (closing) | 16/88 | 18 | `030100` | **AUTOTEST exit**, closes service mode. |
+| 22 | 16/88 | 18 | `030100` | **AUTOTEST exit**, closes service mode. |
 
 Before each round the app also sends an **assistant unlock** (set 0x03, id
 0xDF, dst 0x03, payload `01 00 00 00`, cmd_type 0x40), which unlocks the flight
@@ -429,7 +430,7 @@ beyond the service-mode window.
 
 ### 9.1 The three command families
 
-The twenty-one frames fall into three groups, with three different logical
+The twenty-two frames fall into three groups, with three different logical
 destinations:
 
 - **Radio region and power**, towards the remote and the link (set 6 RADIO, set
@@ -462,7 +463,7 @@ This is the constraint that makes or breaks an apply, and it is the reason for
 precise concurrency choices in the code.
 
 Frame 1 (AUTOTEST enter) opens a service-mode window. The closing frame
-(AUTOTEST exit) closes it. All twenty-one frames in between must land inside
+(AUTOTEST exit) closes it. The twenty frames in between must land inside
 that window. If the burst stretches beyond a few seconds, the window closes
 first, the subsequent writes fall into the void, and the radio silently stays on
 CE while every single write reports "sent successfully".
@@ -491,7 +492,7 @@ sequenceDiagram
     participant Drone as Aircraft
     App->>RC: AUTOTEST enter (opens window)
     App->>RC: assistant unlock
-    loop 2 rounds x ~21 frames, 30ms/frame
+    loop 2 rounds x 22 frames, 30ms/frame
         App->>RC: RADIO / WIFI / OFDM set (region, power)
         App->>Drone: FLYCONTROLLER write (max_height 500)
     end
@@ -676,56 +677,120 @@ on all the selected framings, for the same reason the apply does the sweep.
 
 ---
 
-## 17. The experimental part, speed and altitude parameters
+## 17. The Experimental tab, reading and writing flight-controller parameters
 
-`FreeFCC/Core/Experimental.swift` and `probeSpeedParams()`. Currently read-only.
-It reads flight controller parameters addressed by name hash, with the same
-by-hash commands the FCC profile already uses:
+`FreeFCC/Core/Experimental.swift` holds the parameter tables, the probes live in
+`FccController` under the `Experimental` marks. Everything here addresses the
+flight controller's config table by the hash of the parameter name, on the
+FLYCONTROLLER command set (0x03), with the same by-hash verbs the FCC profile
+already uses. The hashes come from the public dji-firmware-tools tables and were
+verified with DJI's own name-hash function: the known parameters reproduce their
+documented hashes bit for bit, so generated candidates address real parameters
+when they exist and are ignored when they do not.
 
-| Command | id | What it does |
+What each verb does on this firmware (RC-N3 + DJI Neo, FW v00.05.00.12):
+
+| Verb | id | On this firmware |
 |---|---|---|
-| Get Param Info By Hash | 0xF7 | Returns the type, size, min, max and default the firmware enforces |
-| Read Value By Hash | 0xF8 | Reads the current value |
-| Write Value By Hash | 0xF9 | Writes a value (not used by the read) |
+| Get Param Info By Hash | 0xF7 | No reply, swept across sender 0x82/0x02, cmd_type 0x20/0x40 and dst 0x03/0x92, each in its own service window |
+| Read Value By Hash | 0xF8 | No reply, same sweep |
+| Write Value By Hash | 0xF9 | Answered. For the limit parameters the reply carries status + hash + the value actually stored; for the control parameters it carries the status only |
+| Read Params By Hash, multiple | 0xFB | Sent since v1.2 (flag byte + hash, sweeping flag, cmd_type and dst). No hardware result recorded yet |
 
-The parameters read, with their hashes (from the public dji-firmware-tools
-tables):
+So the read channel that exists today is the `0xF9` write echo, and only for the
+limit parameters. That single fact shapes everything below.
+
+### 17.1 The six tools
+
+| Button on the tab | Method | Writes | What it does |
+|---|---|---|---|
+| Read Attitude Parameters | `probeSpeedParams()` | nothing | Two-phase 0xF7/0xF8 probe. Phase 1 looks for a read context that answers, using `max_height` as the known value; phase 2 reads every parameter on it. On failure it dumps the set 0x03 census, so a mis-keyed reply is still visible |
+| Probe 500m Gate | `probeAltitudeGate()` | altitude and geo limits | Writes one candidate at a time and decodes the 0xF9 echo, to bisect toward the parameter that opens the DJI Fly slider past 120 (v1.1) |
+| Read via 0xFB | `probeReadFB()` | nothing | Pure read of the geo/authority values and the attitude ranges over 0xFB, sweeping flag, cmd_type and dst until one answers (v1.2) |
+| Read Flight Telemetry | `readTelemetry()` | nothing | Decodes the latest OSD General push (set 0x03, id 0x43): height, ground speed from Vgx/Vgy, flight mode; plus the Limit State push (id 0x55) (v1.2) |
+| Record Sport Flight | `recordFlight(seconds:)` | nothing | Samples the OSD push for 30 seconds on its own queue and reports the peak horizontal speed and height, the ground truth for the speed work (v1.6) |
+| Boost Sport Speed | `applySpeedBoost()` | flight-control parameters | Warmth check, then float32 writes of `atti_limit` 45, `atti_range` 40, `horiz_vel_atti_range` 40 (degrees), `vert_up_vel` 6 and `vert_down_vel` 6 (m/s), each with its 0xF9 echo (v1.3 to v1.5) |
+
+Green buttons only read. The amber one writes limits, the class of parameter the
+FCC apply already writes. The red one writes control parameters, which change how
+the aircraft handles: it is flight-safety territory and has to be flown low and
+slow in open space. Every write is RAM-only, a CE restore or a power cycle resets
+it.
+
+### 17.2 The window discipline
+
+Each read or write sits inside its own tight service-mode window: AUTOTEST enter,
+assistant unlock (set 0x03, id 0xDF), the one frame, then AUTOTEST exit, with a
+200 ms capture on the expected reply key. The same timing note as the profile
+applies here: a burst stretched beyond a few seconds silently does nothing. The
+first probe kept a single window open across all the parameters, about three
+seconds, and that is why it got no answer. Writes are tried on dst 0x03 first and
+on the SVO route 0x92 if nothing echoes.
+
+### 17.3 What the hardware said
+
+- `max_height` written to 500 is acknowledged with status 0, but the echo is
+  `00 8A 23 71 03 78 00`: the drone stores 120. Reproduced across sessions and
+  again after the float writes of v1.4. The ceiling is enforced drone-side and
+  `max_height` alone does not lift it (issue #1).
+- 0xF7 and 0xF8 never answer, in any combination tried. The flight controller is
+  not mute: during the probe the census shows it pushing on set 0x03 (id 0xD7 in
+  the thousands, id 0xCE from the responder behind sender 0x92, plus 0x53, 0x09,
+  0x42). The reads are ignored, not lost (issue #2).
+- The v1.3 integer writes to the attitude parameters were ignored, full-stick
+  Sport stayed at the normal cap. That is the signature of the wrong width: these
+  parameters are 4-byte floats, so v1.4 writes them as little-endian float32. The
+  flight controller clamps out-of-range writes to its own maximum.
+- The control-parameter writes come back with status 0 and no value, unlike
+  `max_height`. The echo alone cannot say whether the value stuck, which is why
+  the flight recorder exists: the measured peak km/h is the only ground truth
+  (issue #3).
+
+### 17.4 The warmth gate
+
+A cold link and a wrong write both look like "no echo". `linkIsWarm()` removes the
+ambiguity: it writes `max_height` (the value the apply already sets) and looks
+for its 0xF9 echo, which only comes back when the controller is relaying to the
+aircraft. The Sport boost runs it first and writes nothing on a cold link,
+telling the user to warm DJI Fly to the live camera and retry within about
+fifteen seconds. It is a link sensor, not a region sensor: it says nothing about
+CE or FCC (issue #6).
+
+### 17.5 The parameter tables
+
+Altitude-gate candidates, written one at a time by Probe 500m Gate:
+
+| Parameter | Hash | Written | Why |
+|---|---|---|---|
+| `flying_limit.max_height_0` | `0x0371238a` | 500 (u16) | The ceiling the app already writes; the drone clamps it to 120 |
+| `advanced_function.height_limit_enabled_0` | `0xae52d19a` | 0 (u8) | Turn height-limit enforcement off (the apply writes 1) |
+| `novice_cfg.max_height_0` | `0xd9ab9f79` | 500 | Beginner-mode ceiling |
+| `airport_limit_cfg.cfg_disable_airport_fly_limit_0` | `0x8fb32a2d` | 1 | Disable airport/NFZ limits |
+| `flying_limit.height_limit_num_0` | `0x11ce86a4` | 500 | Candidate, a separate height-limit value |
+| `flying_limit.height_limit_0` | `0x85ad07a3` | 500 | Candidate, height limit |
+| `flying_limit.max_height_type_0` | `0xa61867e2` | 1 | Candidate, height-limit type or zone selector |
+| `flying_limit.enable_flying_limit_0` | `0x510882c8` | 0 | Candidate, disable the flying limit entirely |
+| `flying_limit.limit_gps_not_ready_max_height_0` | `0x642acdc9` | 500 | Candidate, GPS-not-ready ceiling |
+
+Parameters read by Read via 0xFB (and, through 0xF7/0xF8, by Read Attitude
+Parameters):
 
 | Parameter | Hash | What it is for |
 |---|---|---|
-| `flying_limit.max_height` | `0x0371238a` | Altitude ceiling. Must read 500 after an apply, used as a self-check |
-| `flying_limit.max_radius` | `0x425c0a94` | Distance ceiling |
-| `advanced_function.height_limit_enabled` | `0xae52d19a` | Whether the ceiling is enforced |
-| `novice_cfg.max_height` | `0xd9ab9f79` | Ceiling in beginner mode |
-| `airport_limit_cfg.cfg_disable_airport_fly_limit` | `0x8fb32a2d` | Whether airport/NFZ limits are disabled |
-| `control.horiz_vel_atti_range` | `0xde0fff00` | Attitude range that limits horizontal speed |
-| `control.atti_range` | `0x9da51eee` | General attitude range |
-| `control.horiz_emergency_brake_tilt_max` | `0x3d833d3a` | Maximum tilt during emergency braking |
+| `flying_limit.max_height_0` | `0x0371238a` | Altitude ceiling, the self-check (expect 120) |
+| `flying_limit.max_radius_0` | `0x425c0a94` | Distance ceiling |
+| `api_entry_cfg.authority_level_0` | `0x7b24ba4b` | SDK/API authority level, the 500m-gate candidate |
+| `api_entry_cfg.height_data_type_0` | `0x96a0a2cf` | Height data type |
+| `control.atti_range_0` | `0x9da51eee` | Attitude range, caps Sport speed |
+| `control.horiz_vel_atti_range_0` | `0xde0fff00` | Horizontal-velocity attitude range |
+| `control.atti_limit_0` | `0x9f9646e9` | Caps the maximum of `atti_range` |
+| `control.horiz_emergency_brake_tilt_max_0` | `0x3d833d3a` | Emergency-brake tilt maximum |
 
-### 17.1 The two-phase logic
-
-The probe has a precise logic taken from the failures of earlier reads:
-
-- **Phase 1**, find the read context that answers. It uses `max_height` as the
-  known truth (it must be 500 after an apply) and varies the two unknowns: the
-  cmd_type of the read verb (the write path answers on 0x20, not on the 0x40 the
-  old probe used) and the destination behind which the config responder lives
-  (0x03, or the SVO route 0x92 that the proven fb-param writes use).
-- **Phase 2**, once the winning context is found, read every parameter on it.
-
-Each read sits inside its own tight service-mode window (AUTOTEST enter,
-assistant unlock, get info, read value, exit), because the same timing note as
-the profile applies here: a burst stretched beyond a few seconds silently does
-nothing. The old probe kept a single window open across all the parameters,
-about 3 seconds, and that is why it got no answer.
-
-### 17.2 Why read before writing
-
-The Get Info response carries the min, max and default the firmware itself
-enforces. Those limits are what make a future write safe: a speed change can
-stay inside the bounds the flight controller already honours, instead of
-guessing a number taken from a video. This is the foundation for the future
-work on unlocked speed and altitude.
+The Read Attitude Parameters probe also covers
+`advanced_function.height_limit_enabled`, `novice_cfg.max_height` and
+`airport_limit_cfg.cfg_disable_airport_fly_limit`, and would print the type,
+size, min, max and default from a Get Info reply if this firmware ever answered
+one.
 
 ---
 
@@ -807,12 +872,12 @@ FreeFCC/
     RCLink.swift                RCLink envelope, inbound stream parser, DumplResponse
     DumplTransport.swift        transport protocol, RxStats, bootstrap, keepalive
     ExternalAccessoryTransport.swift   MFi transport, protocol ranking, RX/TX threads, serial sniffing
-    FccController.swift         all the business logic, connect, apply, sweep, hold, region, diagnostics
+    FccController.swift         all the business logic, connect, apply, sweep, hold, region, diagnostics, experimental probes
     ProfileLoader.swift         loading and decoding of the JSON profiles
-    Experimental.swift          flight controller parameters by hash, Get Info parsing
+    Experimental.swift          parameter tables by hash: read set, altitude-gate candidates, 0xFB read set, Sport boost values, OSD decoder
     NetworkProbe.swift          interface enumeration, TCP probe towards USB gadget
     DiagnosticLog.swift         log mirror to unified log and container file
-  App/                          SwiftUI screens and design system
+  App/                          SwiftUI screens (FCC, Log, Profile, Experimental, About) and design system
   Resources/profiles/
     fcc.json                    the FCC + 500m sequence
     ce_restore.json             the single-frame CE restore
@@ -820,7 +885,7 @@ FreeFCCTests/                   tests on frames, parser, profile, altitude
 docs/
   TECHNICAL-DOCUMENTATION.md    this document (English)
   DOCUMENTAZIONE-TECNICA.md     the Italian original
-  screenshots/                  the README images
+  screenshots/                  the README images (retake: simulator build, launch with -initialTab N)
 ```
 
 Entry points to understand the flow:
@@ -832,35 +897,49 @@ Entry points to understand the flow:
   `sendPass`, plus the timing notes.
 - For **the channel**, read `ExternalAccessoryTransport.swift` and the strings
   in `Info.plist`.
+- For **the experimental probes**, start from the tables in `Experimental.swift`,
+  then the `Experimental` marks in `FccController.swift` (section 17).
 
 ---
 
-## 21. Future development directions
+## 21. Where things stand, and what is next
 
-What is done and confirmed: FCC power on RC-N3 + DJI Neo. The rest is open
-reverse engineering, mapped onto the repository issues.
+Aligned with app version 1.7 (build 8). Done and confirmed on hardware: FCC power
+on RC-N3 + DJI Neo. The rest is open reverse engineering, mapped onto the
+repository issues, and the Experimental tab already ships the tool each issue
+needs. What is missing on every one of them is a hardware run with the log
+posted.
 
-- **Unlocking the 500m altitude (#1) and the ~60 km/h speed (#3)**. Both are
-  aircraft-side reverse engineering, on the flight controller parameters. The
-  foundation is there: `Experimental.swift` already reads parameters by hash
-  and extracts their min, max and default. The next step is the write, inside a
-  service-mode window like the apply's, staying within the limits Get Info
-  reports.
-- **Getting the config-table read to answer (#2)**, the tool that unlocks the
-  two above. The two-phase `probeSpeedParams` probe is the current work: finding
-  the context (cmd_type, destination) on which the flight controller answers
-  by-hash reads. Next things to try, reading the whole table with 0xFB, or
-  slipping the read into the same burst as a proven write.
-- **Removing the "open DJI Fly first" step (#4)**, by initialising the link
-  ourselves. This requires replicating the initialisation sequence DJI Fly
-  sends to wake up the remote-aircraft link.
-- **Testers on RC-N1 / RC-N2 and other aircraft (#5)**. No code required, just
-  a device and a log. The `RxStats` fields and the census make a log useful
-  even without the hardware in the reader's hands.
-- **Reading the region back (#6)**, for a real in-app CE/FCC indicator. Blocked
-  by the fact that this firmware does not answer the region read commands tried
-  so far. The destination probe and the documented RC power mode commands
-  (6/0x21 Get) are the two threads to pull.
+- **500m altitude (#1)**. Shipped: the altitude-gate probe (v1.1) and the 0xFB
+  read (v1.2). Known: `max_height` is stored as 120 whatever is written. Next:
+  run Probe 500m Gate, note which candidates the drone stores and which it
+  clamps, open DJI Fly after each and see whether the slider passes 120, then
+  bisect to the gate and add it to `fcc.json`. If nothing drone-side opens it,
+  the cap lives in DJI Fly's GPS zone logic.
+- **A working config-table read (#2)**. Known: 0xF7 and 0xF8 are dead on this
+  firmware, the 0xF9 echo returns a value for limits only. Shipped: Read via
+  0xFB (v1.2), result not yet recorded. Next: run it and post the log. If 0xFB
+  is dead too, the write echo stays the only channel for limits and the flight
+  recorder stays the ground truth for control parameters.
+- **~60 km/h on Sport (#3)**. Shipped: the staged boost as float32 writes
+  (v1.4), the warmth gate (v1.5) and the flight recorder (v1.6). Known: integer
+  writes were ignored, float writes are acknowledged without a value echo. Next:
+  a warm boost followed by Record Sport Flight, full stick in open space, and the
+  measured peak km/h decides whether to step the values up. Bounded at about 60,
+  never unlimited.
+- **Dropping the "open DJI Fly first" step (#4)**. Shipped: the warmth gate,
+  which tells a cold link from a wrong write. Missing: the initialisation DJI Fly
+  sends that flips the controller into relaying. Next: Dump All Traffic right
+  after DJI Fly connects, find the frames the app-to-RC direction carries, add
+  the minimum to the connect sequence. Success is 38 responses on a cold start.
+- **Testers on RC-N1 / RC-N2 and other aircraft (#5)**. Still confirmed on one
+  pair only. No code required: a device, the Log tab share button, and the
+  protocol string the controller advertises.
+- **Reading the region back (#6)**. Nothing in the app decodes it yet. The lead
+  is the RADIO status push (set 0x06, id 0x05) the controller broadcasts
+  continuously; capture it on CE and again after an FCC apply, diff the payload,
+  then drive a live CE/FCC badge from it. The warmth gate is a link sensor, not a
+  region sensor.
 
 Every issue lists what is known, the exact hashes and commands, and the next
 concrete step. The fastest way to contribute is still to run the app on real
