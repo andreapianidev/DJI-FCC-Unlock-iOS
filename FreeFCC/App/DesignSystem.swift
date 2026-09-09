@@ -1,3 +1,9 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+// Copyright (C) 2026 Andrea Piani. https://www.andreapiani.com
+// FreeFCC for iOS. Free for noncommercial use only. See LICENSE and NOTICE.md.
+// Attribution required; do not present this work as your own.
+//
+
 import SwiftUI
 
 /// The app palette: near-black navy ground, cyan for the primary action,

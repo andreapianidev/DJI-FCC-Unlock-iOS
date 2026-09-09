@@ -870,6 +870,6 @@ reale e postare il log: una scoperta da un dispositivo vale quanto del codice.
 ---
 
 © 2026 Andrea Piani · [andreapiani.com](https://www.andreapiani.com) · Licenza
-GPL-3.0. Il protocollo DUML implementato è documentato pubblicamente dal progetto
+PolyForm Noncommercial 1.0.0. Il protocollo DUML implementato è documentato pubblicamente dal progetto
 [dji-firmware-tools](https://github.com/o-gs/dji-firmware-tools), l'app iOS e la
 sua logica sono lavoro originale.

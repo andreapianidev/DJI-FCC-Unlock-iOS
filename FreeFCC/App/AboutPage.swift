@@ -1,3 +1,9 @@
+// SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+// Copyright (C) 2026 Andrea Piani. https://www.andreapiani.com
+// FreeFCC for iOS. Free for noncommercial use only. See LICENSE and NOTICE.md.
+// Attribution required; do not present this work as your own.
+//
+
 import SwiftUI
 
 struct AboutPage: View {
@@ -135,7 +141,7 @@ struct AboutPage: View {
                 )
                 DividerLine().padding(.vertical, 16)
                 InfoRow(label: "Version", value: "1.6")
-                InfoRow(label: "License", value: "GPL-3.0")
+                InfoRow(label: "License", value: "PolyForm NC 1.0.0")
                 InfoRow(label: "Protocol", value: "DUML")
                 InfoRow(label: "Transport", value: "MFi ExternalAccessory")
                 InfoRow(label: "Server", value: "None, fully offline")
@@ -154,7 +160,8 @@ struct AboutPage: View {
                     An app by Andrea Piani. The DUML command protocol it speaks is publicly \
                     documented by the dji-firmware-tools project, which is where the region and \
                     altitude commands were verified. The iOS app, its transport and its logic are \
-                    original work, released under GPL-3.0.
+                    original work, free for noncommercial use under the PolyForm Noncommercial \
+                    License 1.0.0. Commercial use is not permitted.
                     """
                 )
                 DividerLine().padding(.vertical, 16)

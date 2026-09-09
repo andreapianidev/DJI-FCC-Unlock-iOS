@@ -4,9 +4,9 @@
 
 ### FCC unlock and 500m altitude for DJI RC-N1 / RC-N2 / RC-N3, native on iPhone
 
-[![DJI FCC mode, unlocked from an iPhone. Free and open source.](docs/hero.jpg)](https://www.andreapiani.com/dji-fcc-unlock-ios.html)
+[![DJI FCC mode, unlocked from an iPhone. Free for noncommercial use.](docs/hero.jpg)](https://www.andreapiani.com/dji-fcc-unlock-ios.html)
 
-[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue?style=flat-square)](LICENSE)
+[![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-F97316?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-iOS%2017%2B-black?style=flat-square&logo=apple)](#)
 [![Confirmed](https://img.shields.io/badge/RC--N3%20%2B%20DJI%20Neo-confirmed%20on%20hardware-34D399?style=flat-square)](#-confirmed-on-hardware)
 [![Website](https://img.shields.io/badge/Website-andreapiani.com-0A84FF?style=flat-square)](https://www.andreapiani.com/dji-fcc-unlock-ios.html)
@@ -186,7 +186,7 @@ docs/screenshots/        the images above
 
 ## 🤝 Contributing, help wanted
 
-This is the **open-source answer** to the paid FCC/altitude tools. FCC power is
+This is the **free, source-available answer** to the paid FCC/altitude tools. FCC power is
 done and confirmed; the rest is open reverse engineering, and it moves faster
 with more hands and more hardware. Everything still to do is written up as
 detailed issues:
@@ -206,7 +206,10 @@ post your log. Findings from real devices are as valuable as code.
 
 ## 📜 License
 
-GPL-3.0. See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md). The DUML protocol the
+Free for **noncommercial use** under the PolyForm Noncommercial License 1.0.0.
+See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md). You may use, study, modify and
+share it for any noncommercial purpose, with attribution. Commercial use is not
+permitted without a separate license from the author. The DUML protocol the
 app implements is publicly documented by the
 [dji-firmware-tools](https://github.com/o-gs/dji-firmware-tools) project; the iOS
 app and its logic are original work.

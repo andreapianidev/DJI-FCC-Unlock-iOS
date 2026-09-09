@@ -868,7 +868,7 @@ hardware and post the log: a finding from a device is worth as much as code.
 
 ---
 
-© 2026 Andrea Piani · [andreapiani.com](https://www.andreapiani.com) · GPL-3.0
-license. The DUML protocol implemented is publicly documented by the
+© 2026 Andrea Piani · [andreapiani.com](https://www.andreapiani.com) · PolyForm
+Noncommercial License 1.0.0. The DUML protocol implemented is publicly documented by the
 [dji-firmware-tools](https://github.com/o-gs/dji-firmware-tools) project, the
 iOS app and its logic are original work.
