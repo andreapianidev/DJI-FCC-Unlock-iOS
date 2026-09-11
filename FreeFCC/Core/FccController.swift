@@ -160,6 +160,12 @@ final class FccController {
     /// sample of the most recent payload, so the real conversation on the link
     /// can be read rather than guessed at.
     private let frameCensus = Protected([Int: (count: Int, sample: [UInt8])]())
+    /// Stock Sport-block values the 0xFA reset reported, keyed by hash, so a
+    /// restore can write them back even if a later reset goes unanswered.
+    private let sportStock = Protected([UInt32: Float]())
+    /// The Sport tilt the drone last echoed as stored, for the flight recorder
+    /// to compare with the tilt actually flown.
+    private let sportTiltStored = Protected<Float?>(nil)
 
     private var repeatTimer: DispatchSourceTimer?
     private var serialPollTask: Task<Void, Never>?
@@ -1340,10 +1346,11 @@ final class FccController {
             postLog("No OSD (0x43) frame captured yet. Fly for a moment, then read again.")
             return
         }
-        let hex = osd.prefix(24).map { String(format: "%02X", $0) }.joined(separator: " ")
+        let hex = osd.prefix(32).map { String(format: "%02X", $0) }.joined(separator: " ")
         postLog("OSD General (0x43) sample: [\(hex)]")
         if let h = OsdGeneral.heightMeters(osd) { postLog(String(format: "  height %.1f m", h)) }
         if let kmh = OsdGeneral.horizontalKmh(osd) { postLog(String(format: "  ground speed %.1f km/h", kmh)) }
+        if let tilt = OsdGeneral.tiltDegrees(osd) { postLog(String(format: "  tilt %.1f°", tilt)) }
         postLog("  flight mode \(OsdGeneral.flightMode(osd))")
         if osd.allSatisfy({ $0 == 0 }) {
             postLog("  (all zero: the drone was on the ground / not armed when captured)")
@@ -1382,34 +1389,55 @@ final class FccController {
         postLog("Recording. Fly Sport, full stick forward, in open space. Peaks appear below.")
         var peakKmh = 0.0
         var peakHeight = 0.0
+        var peakTilt = 0.0
+        var tiltAtPeak: Double?
         var samples = 0
         var lastLog = Date.distantPast
         let deadline = Date().addingTimeInterval(Double(seconds))
         while Date() < deadline {
             if let osd = latestOsd(), !osd.allSatisfy({ $0 == 0 }) {
                 samples += 1
+                let tilt = OsdGeneral.tiltDegrees(osd)
                 if let kmh = OsdGeneral.horizontalKmh(osd), kmh > peakKmh {
                     peakKmh = kmh
-                    postLog(String(format: "  new peak %.1f km/h  mode %@", kmh, OsdGeneral.flightMode(osd)))
+                    tiltAtPeak = tilt
+                    postLog(String(format: "  new peak %.1f km/h  tilt %.1f°  mode %@", kmh, tilt ?? 0, OsdGeneral.flightMode(osd)))
                 }
                 if let h = OsdGeneral.heightMeters(osd), h > peakHeight { peakHeight = h }
+                if let tilt, tilt > peakTilt { peakTilt = tilt }
                 if Date().timeIntervalSince(lastLog) > 2 {
                     lastLog = Date()
                     let now = OsdGeneral.horizontalKmh(osd) ?? 0
                     let h = OsdGeneral.heightMeters(osd) ?? 0
-                    postLog(String(format: "  now %.1f km/h, %.1f m, mode %@", now, h, OsdGeneral.flightMode(osd)))
+                    postLog(String(format: "  now %.1f km/h, %.1f m, tilt %.1f°, mode %@", now, h, tilt ?? 0, OsdGeneral.flightMode(osd)))
                 }
             }
             Thread.sleep(forTimeInterval: 0.1)
         }
         postLog("Recording done.")
         postLog(String(format: "PEAK horizontal speed %.1f km/h,  PEAK height %.1f m,  %d live samples", peakKmh, peakHeight, samples))
+        if let tiltAtPeak {
+            postLog(String(format: "Tilt at the speed peak %.1f°, highest tilt seen %.1f°", tiltAtPeak, peakTilt))
+        }
         if peakKmh <= 0 {
             postLog("Peak stayed 0. Either the OSD speed field is not updating over this link, or the drone did not move while recording.")
-        } else if peakKmh < 30 {
-            postLog("Under ~30 km/h: the Sport cap (28.8) still holds, so the boost did not lift the horizontal limit.")
+            return
+        }
+        if peakKmh < 30 {
+            postLog("Under ~30 km/h: the Sport cap (28.8) still holds.")
         } else {
-            postLog("Above the 28.8 Sport cap: the boost moved the limit. Note the number, we iterate the values up toward 60.")
+            postLog("Above the 28.8 Sport cap: the boost moved the limit. Note the number and the tilt.")
+        }
+        // The tilt flown against the tilt stored tells the two possible caps apart.
+        guard let stored = sportTiltStored.value else {
+            postLog("No Sport tilt was confirmed stored in this session, so there is nothing to compare the flown tilt with. Run Boost Sport Speed first.")
+            return
+        }
+        guard let tiltAtPeak else { return }
+        if tiltAtPeak < Double(stored) - 5 {
+            postLog(String(format: "The drone leaned %.1f° of the %.1f° it stores: the tilt is not what holds it back. A separate velocity limit caps Sport, so raising the tilt further will not help.", tiltAtPeak, stored))
+        } else {
+            postLog(String(format: "The drone leaned %.1f°, close to the %.1f° it stores: speed is tilt-limited, so the stored tilt is the lever.", tiltAtPeak, stored))
         }
     }
 
@@ -1431,8 +1459,8 @@ final class FccController {
         Thread.sleep(forTimeInterval: 0.03)
         emit(0x03, 0xDF, dst: 0x03, cmdType: 0x40, [0x01, 0x00, 0x00, 0x00])
         Thread.sleep(forTimeInterval: 0.05)
-        beginCapture([(SpeedExperiment.flycSet << 8) | SpeedBoost.writeByHash])
-        emit(SpeedExperiment.flycSet, SpeedBoost.writeByHash, dst: 0x03, cmdType: 0x20,
+        beginCapture([(SpeedExperiment.flycSet << 8) | SportBoost.writeByHash])
+        emit(SpeedExperiment.flycSet, SportBoost.writeByHash, dst: 0x03, cmdType: 0x20,
              [0x8a, 0x23, 0x71, 0x03, 0xf4, 0x01]) // max_height = 500, echoes 120 when warm
         let warm = endCapture(windowMs: 220).contains {
             $0.payload.count >= 5 && $0.payload[1] == 0x8a && $0.payload[2] == 0x23 && $0.payload[3] == 0x71
@@ -1444,85 +1472,212 @@ final class FccController {
 
     // MARK: Experimental, Sport-speed boost (issue #3, writes control params)
 
-    /// Writes the attitude-range and vertical-velocity parameters that cap Sport
-    /// speed, to modest higher values, then reads the 0xF9 echo. Flight-control
-    /// parameters, unlike the altitude limits: a wrong value changes how the
-    /// aircraft handles. Values are chosen to be safe across encodings, and the
-    /// flight controller clamps out-of-range writes to its own maximum. Still,
-    /// this must be flight-tested low and slow, and a power cycle resets it.
+    /// Raises the Sport block's max tilt, which sets Sport top speed on
+    /// Mavic-generation firmware, and reads back what the drone stored. For
+    /// each Sport-block name it first resets to stock with 0xFA, which may
+    /// report the factory value, then writes stock + 10 degrees (never above
+    /// 40) with 0xF9 and decodes the echo. A bare `[00]` means the name is not
+    /// on this firmware; a stored value below the written one means the flight
+    /// controller clamped it to its own ceiling. Ground only.
     func applySpeedBoost() {
         guard requireConnection() else { return }
         if !aircraftLinked {
             log("WARNING: no aircraft linked. Writes will not land.")
         }
-        log("Experimental: Sport-speed boost (writes control params, flight-test required)")
+        log("Experimental: Sport-speed boost (writes the Sport flight-control block)")
         engineQueue.async { [weak self] in self?.applySpeedBoostSync() }
     }
 
     private nonisolated func applySpeedBoostSync() {
-        guard let transport = transportBox.value else { return }
-        if !waitForAircraft(timeoutMs: 20000) {
-            postLog("No aircraft linked. Nothing written.")
-            return
+        guard sportPreflight(action: "Nothing written") else { return }
+        postLog("Link is WARM. Resetting the Sport block to stock, then writing the boost.")
+        postLog("Flight-safety: test low and slow in open space. Restore Sport Defaults undoes it; a power cycle may not.")
+
+        // Pass 1: reset to stock. Where the reply carries the hash, the name
+        // exists here and the value is the factory one.
+        var stock: [UInt32: Float] = [:]
+        for p in SportBoost.params {
+            postLog(String(format: "• %@  (hash %08X)", p.name, p.hash))
+            guard let reply = byHashInWindow(SportBoost.resetByHash, p.hashLE) else {
+                postLog("  reset: no reply")
+                continue
+            }
+            postLog("  reset: \(describeSportReply(reply))")
+            if let echo = ParamEcho(reply), echo.hash == p.hash, let value = echo.float {
+                stock[p.hash] = value
+            }
+            Thread.sleep(forTimeInterval: 0.08)
         }
+        sportStock.withLock { $0.merge(stock) { _, new in new } }
+
+        let stockTilt = SportBoost.params.first { $0.kind == .tilt && stock[$0.hash] != nil }.flatMap { stock[$0.hash] }
+        let tilt = SportBoost.tiltTarget(stock: stockTilt)
+        if let stockTilt {
+            postLog(String(format: "Stock Sport tilt reported by the drone: %.1f°", stockTilt))
+        } else {
+            postLog(String(format: "Stock Sport tilt not reported, using the fallback %.0f°.", SportBoost.fallbackTilt))
+        }
+
+        // Pass 2: write the boost and read back what was stored.
+        var present = 0
+        var clamped = false
+        for p in SportBoost.params {
+            let value: Float
+            switch p.kind {
+            case .tilt:
+                guard let tilt else {
+                    postLog(String(format: "• %@: stock is already at or above the app's %.0f° ceiling, not raised", p.name, SportBoost.maxTilt))
+                    continue
+                }
+                value = tilt
+            case .rcScale:
+                value = SportBoost.rcScale
+            }
+            postLog(String(format: "• %@  writing %.2f", p.name, value))
+            guard let reply = byHashInWindow(SportBoost.writeByHash, p.hashLE + SportBoost.f32(value)) else {
+                postLog("  no reply")
+                continue
+            }
+            guard let echo = ParamEcho(reply), echo.hash == p.hash else {
+                postLog("  \(describeSportReply(reply)): bare reply, this name is not in the firmware's table. Nothing stored.")
+                continue
+            }
+            present += 1
+            guard let stored = echo.float else {
+                postLog("  \(describeSportReply(reply)): the stored value is not a 4-byte float, check the width")
+                continue
+            }
+            if abs(stored - value) < 0.01 {
+                postLog(String(format: "  ACCEPTED, the drone stores %.2f", stored))
+            } else if stored < value {
+                clamped = true
+                postLog(String(format: "  CLAMPED, the drone stores %.2f: that is this firmware's ceiling for the parameter", stored))
+            } else {
+                postLog(String(format: "  the drone stores %.2f, not the %.2f written", stored, value))
+            }
+            if p.kind == .tilt { sportTiltStored.value = stored }
+            Thread.sleep(forTimeInterval: 0.08)
+        }
+
+        if present == 0 {
+            postLog("No Sport-block name exists on this firmware either. Neither the old globals nor the Mavic-generation block are here; the Neo's own table is needed (issue #3). Nothing was stored.")
+        } else if clamped {
+            postLog("Stored, but clamped. The firmware caps the Sport block below the requested value, so this is as far as parameters go. Record a Sport flight to measure what the clamped value gives.")
+        } else {
+            postLog("Boost stored. Now tap Record Sport Flight and fly Sport, full stick, low, in open space. The recorder compares the tilt flown with the tilt stored.")
+        }
+    }
+
+    /// Puts the Sport block back to stock: a 0xFA reset on every Sport-block
+    /// name, then, where the boost learned the factory value, a 0xF9 write of
+    /// it with the echo decoded, so the restore is confirmed even if 0xFA
+    /// answers with a status only. Ground only.
+    func restoreSportDefaults() {
+        guard requireConnection() else { return }
+        log("Experimental: restoring the Sport block to stock")
+        engineQueue.async { [weak self] in self?.restoreSportDefaultsSync() }
+    }
+
+    private nonisolated func restoreSportDefaultsSync() {
+        guard sportPreflight(action: "Nothing restored") else { return }
+        let stock = sportStock.value
+        for p in SportBoost.params {
+            postLog("• \(p.name)")
+            if let reply = byHashInWindow(SportBoost.resetByHash, p.hashLE) {
+                postLog("  reset: \(describeSportReply(reply))")
+            } else {
+                postLog("  reset: no reply")
+            }
+            if let value = stock[p.hash] {
+                if let reply = byHashInWindow(SportBoost.writeByHash, p.hashLE + SportBoost.f32(value)) {
+                    postLog(String(format: "  wrote stock %.2f: %@", value, describeSportReply(reply)))
+                } else {
+                    postLog(String(format: "  wrote stock %.2f: no reply", value))
+                }
+            }
+            Thread.sleep(forTimeInterval: 0.08)
+        }
+        sportTiltStored.value = SportBoost.params.first { $0.kind == .tilt && stock[$0.hash] != nil }.flatMap { stock[$0.hash] }
+        postLog("Restore done. A reply that carries the parameter's hash confirms it; a bare reply means this firmware has no such name, so there was nothing to restore.")
+    }
+
+    /// The checks both Sport-block writers run first: aircraft linked, on the
+    /// ground, link warm. Logs why it refused and returns false.
+    private nonisolated func sportPreflight(action: String) -> Bool {
+        if !waitForAircraft(timeoutMs: 20000) {
+            postLog("No aircraft linked. \(action).")
+            return false
+        }
+        guard aircraftOnGround() else {
+            postLog("The drone is flying. Land it first: this writes flight-control parameters. \(action).")
+            return false
+        }
+        let path = preferredPath.value
+        postLog(String(format: "Sport block in context sender %02X / %@", path.sender, path.framing.label))
+        postLog("Checking link warmth (max_height echo)...")
+        guard linkIsWarm() else {
+            postLog("Link is COLD: max_height did not echo, so the controller is not relaying to the aircraft.")
+            postLog("Open DJI Fly, wait for the LIVE CAMERA image, close it, then retry within ~15s. \(action).")
+            return false
+        }
+        return true
+    }
+
+    /// Whether the latest OSD push says the aircraft is on the ground: all
+    /// zero (not armed), or under 1 km/h within 1 m of the take-off height.
+    /// True when no OSD has arrived yet, so a bench session is not blocked;
+    /// the warmth gate still refuses a cold link.
+    private nonisolated func aircraftOnGround() -> Bool {
+        let osd = frameCensus.value.first {
+            (($0.key >> 8) & 0xFF) == SpeedExperiment.flycSet && ($0.key & 0xFF) == 0x43
+        }?.value.sample
+        guard let osd, !osd.allSatisfy({ $0 == 0 }) else { return true }
+        let kmh = OsdGeneral.horizontalKmh(osd) ?? 0
+        let height = OsdGeneral.heightMeters(osd) ?? 0
+        return kmh < 1 && abs(height) < 1
+    }
+
+    /// Sends one by-hash FLYC command inside its own tight service window and
+    /// returns the reply carrying the same hash, else the first reply to that
+    /// command, else nil. Tries dst 0x03, then the SVO route 0x92.
+    private nonisolated func byHashInWindow(_ cmdId: Int, _ payload: [UInt8]) -> [UInt8]? {
+        guard let transport = transportBox.value else { return nil }
         let path = preferredPath.value
         let route = transport.currentRoute
         let flyc = SpeedExperiment.flycSet
-        let writeId = SpeedBoost.writeByHash
-        postLog(String(format: "Speed boost in context sender %02X / %@", path.sender, path.framing.label))
-
-        // Warmth gate: only write when the link is relaying, so a cold run gives
-        // a clear message instead of an ambiguous no-echo.
-        postLog("Checking link warmth (max_height echo)...")
-        if !linkIsWarm() {
-            postLog("Link is COLD: max_height did not echo, so the controller is not relaying to the aircraft.")
-            postLog("Open DJI Fly, wait for the LIVE CAMERA image, close it, then retry within ~15s. Nothing was written.")
-            return
+        let hashLE = Array(payload.prefix(4))
+        func emit(_ set: Int, _ id: Int, dst: Int, cmdType: Int, _ p: [UInt8]) {
+            transport.write(RCLink.encode(
+                DumplBuilder.buildFrame(DumplFrame(sender: path.sender, cmdType: cmdType, cmdSet: set, cmdId: id, dst: dst, payload: p)),
+                framing: path.framing, route: route))
         }
-        postLog("Link is WARM. Writing the boost (32-bit floats).")
-        postLog("Flight-safety: test low and slow in open space. Power-cycle the drone to reset.")
-
-        func emit(_ set: Int, _ id: Int, dst: Int, cmdType: Int, _ payload: [UInt8]) {
-            let frame = DumplBuilder.buildFrame(
-                DumplFrame(sender: path.sender, cmdType: cmdType, cmdSet: set, cmdId: id, dst: dst, payload: payload)
-            )
-            transport.write(RCLink.encode(frame, framing: path.framing, route: route))
-        }
-
-        func writeAndEcho(_ p: GateParam, dst: Int) -> [UInt8]? {
+        for dst in [0x03, 0x92] {
             emit(0x10, 0x58, dst: 0x12, cmdType: 0x20, [0x03, 0x01, 0x00])
             Thread.sleep(forTimeInterval: 0.03)
             emit(0x03, 0xDF, dst: 0x03, cmdType: 0x40, [0x01, 0x00, 0x00, 0x00])
             Thread.sleep(forTimeInterval: 0.05)
-            beginCapture([(flyc << 8) | writeId])
-            emit(flyc, writeId, dst: dst, cmdType: 0x20, p.hashLE + p.value)
-            let echo = endCapture(windowMs: 200).first?.payload
+            beginCapture([(flyc << 8) | cmdId])
+            emit(flyc, cmdId, dst: dst, cmdType: 0x20, payload)
+            let replies = endCapture(windowMs: 200).map(\.payload)
             emit(0x10, 0x58, dst: 0x12, cmdType: 0x20, [0x03, 0x01, 0x00])
             Thread.sleep(forTimeInterval: 0.05)
-            return echo
+            if let match = replies.first(where: { $0.count >= 5 && Array($0[1...4]) == hashLE }) { return match }
+            if let first = replies.first { return first }
         }
+        return nil
+    }
 
-        var anyEcho = false
-        for p in SpeedBoost.params {
-            let wrote = p.value.map { String(format: "%02X", $0) }.joined(separator: " ")
-            postLog("• \(p.name)")
-            postLog("  \(p.note)")
-            postLog("  writing [\(wrote)]")
-            var echo = writeAndEcho(p, dst: 0x03)
-            if echo == nil { echo = writeAndEcho(p, dst: 0x92) }
-            if let e = echo {
-                let hex = e.map { String(format: "%02X", $0) }.joined(separator: " ")
-                postLog("  echo [\(hex)]  \(decodeEcho(e))")
-                anyEcho = true
-            } else {
-                postLog("  no echo (accepted silently, or the parameter is a different width)")
-            }
-            Thread.sleep(forTimeInterval: 0.08)
+    /// A Sport-block reply for the log: raw bytes, then status, hash and the
+    /// stored value as a float when it is one.
+    private nonisolated func describeSportReply(_ raw: [UInt8]) -> String {
+        let hex = raw.map { String(format: "%02X", $0) }.joined(separator: " ")
+        guard let echo = ParamEcho(raw) else {
+            return "[\(hex)]  status \(raw.first.map { String($0) } ?? "?"), no hash"
         }
-        if !anyEcho {
-            postLog("No echo on any parameter. If the apply was cold (0 responses), warm the link and retry.")
+        if let value = echo.float {
+            return String(format: "[%@]  status %d  hash %08X  stored %.2f", hex, echo.status, echo.hash, value)
         }
-        postLog("Speed boost written. Fly Sport low and slow, then Read Flight Telemetry to measure km/h.")
+        return "[\(hex)]  \(decodeEcho(raw))"
     }
 
     /// Best-effort human reading of a read-value reply. The reply is

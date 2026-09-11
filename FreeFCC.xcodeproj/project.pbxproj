@@ -16,6 +16,7 @@
 		2F4E359EC4F5D1F9CA8B5647 /* FreeFCCApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F269BDB2B666A11FD321ACE9 /* FreeFCCApp.swift */; };
 		320AD0030BD91BC2F23314B5 /* DumplBuilderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F945186B0344A4838B54BAB /* DumplBuilderTests.swift */; };
 		3B79C83311687153C606FB8E /* profiles in Resources */ = {isa = PBXBuildFile; fileRef = FC4824C1A32C6E8FF50C5043 /* profiles */; };
+		3FC2B1EEE569B3D83F976CED /* SportBoostTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05305B67DF700C086E4381AD /* SportBoostTests.swift */; };
 		44A2F9460B399ACD41EC4751 /* ProfilePage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CA32A2A7C38311258323213 /* ProfilePage.swift */; };
 		45C584EE835E97D8D58414CB /* ExperimentalPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C5016A106761EC7D61C1905 /* ExperimentalPage.swift */; };
 		531489E243AA823E9AE6CAD1 /* LogPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9358491B6A7BEB4F88CF6E5 /* LogPage.swift */; };
@@ -43,6 +44,7 @@
 
 /* Begin PBXFileReference section */
 		01436346C11A8EE6CA47CC57 /* Experimental.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Experimental.swift; sourceTree = "<group>"; };
+		05305B67DF700C086E4381AD /* SportBoostTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SportBoostTests.swift; sourceTree = "<group>"; };
 		15753B86B52A84E8163F25EB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		17DB275E76F321F2FBFFDF0D /* DumplBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DumplBuilder.swift; sourceTree = "<group>"; };
 		1F945186B0344A4838B54BAB /* DumplBuilderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DumplBuilderTests.swift; sourceTree = "<group>"; };
@@ -111,6 +113,7 @@
 				C9560895781E977F93661B68 /* DumplStreamParserTests.swift */,
 				E36E3BAA3849908DD68A3238 /* OsdGeneralTests.swift */,
 				EF3C724D381CECC33043FB49 /* ProfileTests.swift */,
+				05305B67DF700C086E4381AD /* SportBoostTests.swift */,
 			);
 			path = FreeFCCTests;
 			sourceTree = "<group>";
@@ -248,6 +251,7 @@
 				176F59F1B50BEADD0020F1BE /* DumplStreamParserTests.swift in Sources */,
 				AFF1192314592607D0703103 /* OsdGeneralTests.swift in Sources */,
 				56DB200FAD44E865227512B3 /* ProfileTests.swift in Sources */,
+				3FC2B1EEE569B3D83F976CED /* SportBoostTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -377,7 +381,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 10;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = ERAK83QBBM;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -392,7 +396,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.7.1;
+				MARKETING_VERSION = 1.8;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -440,7 +444,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 10;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = ERAK83QBBM;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -461,7 +465,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.7.1;
+				MARKETING_VERSION = 1.8;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

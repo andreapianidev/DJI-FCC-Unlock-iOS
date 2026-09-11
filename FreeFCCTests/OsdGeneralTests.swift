@@ -34,4 +34,24 @@ struct OsdGeneralTests {
             #expect(OsdGeneral.horizontalKmh([UInt8](repeating: 0, count: length)) == nil)
         }
     }
+
+    // flyc_state is the low 7 bits of offset 30; bit 7 and offset 31 are
+    // other fields and must not change the mode.
+    @Test func flightModeReadsTheLowBitsOfOffset30() {
+        var payload = [UInt8](repeating: 0, count: 32)
+        payload[30] = 0x86
+        payload[31] = 0x11
+        #expect(OsdGeneral.flightMode(payload) == "GPS_Atti (normal)")
+    }
+
+    // Pitch -30.0 degrees (int16 -300 at 24), roll 40.0 (400 at 26): lean 50.
+    @Test func tiltCombinesPitchAndRoll() throws {
+        var payload = [UInt8](repeating: 0, count: 28)
+        payload[24] = 0xD4
+        payload[25] = 0xFE
+        payload[26] = 0x90
+        payload[27] = 0x01
+        let tilt = try #require(OsdGeneral.tiltDegrees(payload))
+        #expect(abs(tilt - 50) < 0.0001)
+    }
 }

@@ -12,7 +12,7 @@ next should be able to understand the logic, reproduce the results, and know
 where to put their hands to extend the app without starting from scratch.
 
 Author, Andrea Piani, www.andreapiani.com.
-This revision matches app version 1.7.1 (build 9), September 2026.
+This revision matches app version 1.8 (build 10), September 2026.
 
 ---
 
@@ -695,13 +695,15 @@ What each verb does on this firmware (RC-N3 + DJI Neo, FW v00.05.00.12):
 |---|---|---|
 | Get Param Info By Hash | 0xF7 | No reply, swept across sender 0x82/0x02, cmd_type 0x20/0x40 and dst 0x03/0x92, each in its own service window |
 | Read Value By Hash | 0xF8 | No reply, same sweep |
-| Write Value By Hash | 0xF9 | Answered. For the limit parameters the reply carries status + hash + the value actually stored; for the control parameters it carries the status only |
+| Write Value By Hash | 0xF9 | Answered. A parameter that exists echoes status + hash + the value actually stored (`max_height` and three more the FCC apply writes). A hash that is not in the table gets a bare `[00]`: status only, nothing stored |
+| Reset To Default By Hash | 0xFA | Sent since v1.8 by the Sport boost and Restore Sport Defaults. No hardware result recorded yet |
 | Read Params By Hash, multiple | 0xFB | Sent since v1.2 (flag byte + hash, sweeping flag, cmd_type and dst). No hardware result recorded yet |
 
-So the read channel that exists today is the `0xF9` write echo, and only for the
-limit parameters. That single fact shapes everything below.
+So the read channel that exists today is the `0xF9` write echo, and the bare
+`[00]` doubles as the only existence test. That single fact shapes everything
+below.
 
-### 17.1 The six tools
+### 17.1 The seven tools
 
 | Button on the tab | Method | Writes | What it does |
 |---|---|---|---|
@@ -710,19 +712,29 @@ limit parameters. That single fact shapes everything below.
 | Read via 0xFB | `probeReadFB()` | nothing | Pure read of the geo/authority values and the attitude ranges over 0xFB, sweeping flag, cmd_type and dst until one answers (v1.2) |
 | Read Flight Telemetry | `readTelemetry()` | nothing | Decodes the latest OSD General push (set 0x03, id 0x43): height, ground speed from Vgx/Vgy, flight mode; plus the Limit State push (id 0x55) (v1.2) |
 | Record Sport Flight | `recordFlight(seconds:)` | nothing | Samples the OSD push for 30 seconds on its own queue and reports the peak horizontal speed and height, the ground truth for the speed work (v1.6) |
-| Boost Sport Speed | `applySpeedBoost()` | flight-control parameters | Warmth check, then float32 writes of `atti_limit` 45, `atti_range` 40, `horiz_vel_atti_range` 40 (degrees), `vert_up_vel` 6 and `vert_down_vel` 6 (m/s), each with its 0xF9 echo (v1.3 to v1.5) |
+| Boost Sport Speed | `applySpeedBoost()` | the Sport flight-control block | Ground and warmth checks, 0xFA reset to stock, then float32 writes of the Sport tilt (stock + 10 degrees, never above 40; 35 when stock is unknown) and `rc_scale` 1.0, each echo decoded as absent, accepted or clamped (v1.8; v1.3 to v1.7 wrote parameters the Neo lacks, see 17.3) |
+| Restore Sport Defaults | `restoreSportDefaults()` | the Sport flight-control block | 0xFA reset on every Sport-block name, then a write-back of the stock values the boost learned, echo decoded (v1.8) |
 
-Green buttons only read. The amber one writes limits, the class of parameter the
-FCC apply already writes. The red one writes control parameters, which change how
-the aircraft handles: it is flight-safety territory and has to be flown low and
-slow in open space. Every write is RAM-only, a CE restore or a power cycle resets
-it.
+Green buttons only read. The amber ones write limits, the class of parameter the
+FCC apply already writes, or put the Sport block back to stock. The red one
+writes control parameters, which change how the aircraft handles: it is
+flight-safety territory, runs only with the drone on the ground, and has to be
+flown low and slow in open space. FCC and altitude writes are RAM-only, a CE
+restore or a power cycle resets them. The Sport block may not be: on the Mavic
+Mini those parameters carry the persist-to-EEPROM attribute, so undo a boost
+with Restore Sport Defaults.
 
 Since v1.7.1, OSD velocity components are converted to `Double` before squaring.
 This prevents a signed 16-bit overflow from crashing telemetry reads or flight
 recording at an axis speed of 18.2 m/s (65.52 km/h) or above. Regression tests
 cover signed velocities, vector magnitude, truncated payloads and Int16 extremes.
 This decoder fix does not establish whether the Sport boost works on hardware.
+
+Since v1.8, the flight mode is read from the low 7 bits of offset 30, where the
+dissector puts `flyc_state` (it shares the byte with `ctrl_info`). Up to v1.7.1
+the app read offset 31, the next field, so the mode names in older logs are
+wrong. The recorder and the telemetry read also report the tilt, from pitch and
+roll at offsets 24 and 26 in tenths of a degree.
 
 ### 17.2 The window discipline
 
@@ -744,14 +756,24 @@ on the SVO route 0x92 if nothing echoes.
   not mute: during the probe the census shows it pushing on set 0x03 (id 0xD7 in
   the thousands, id 0xCE from the responder behind sender 0x92, plus 0x53, 0x09,
   0x42). The reads are ignored, not lost (issue #2).
-- The v1.3 integer writes to the attitude parameters were ignored, full-stick
-  Sport stayed at the normal cap. That is the signature of the wrong width: these
-  parameters are 4-byte floats, so v1.4 writes them as little-endian float32. The
-  flight controller clamps out-of-range writes to its own maximum.
-- The control-parameter writes come back with status 0 and no value, unlike
-  `max_height`. The echo alone cannot say whether the value stuck, which is why
-  the flight recorder exists: the measured peak km/h is the only ground truth
-  (issue #3).
+- Correction, v1.8. Up to v1.7 this section read the missing value in the
+  control-write echo as "acknowledged, value unconfirmed", and the ignored v1.3
+  integer writes as a width problem. Both readings were wrong. Every control
+  write, integer or float, got a bare `[00]`, while in the same session the
+  parameters that exist echo status + hash + stored value (log of 7 Sep 2026:
+  `max_height`, `0xFBEF4AD0`, `0x01826B23`, `0x8AE67387`). A bare `[00]` is the
+  reply for a hash that is not in the table. `g_config.control.atti_range`,
+  `horiz_vel_atti_range`, `atti_limit`, `vert_up_vel` and `vert_down_vel` are
+  Phantom-era globals the Neo does not have, so nothing was ever stored. The same
+  bare `[00]` answers the FCC profile's `advanced_function.height_limit_enabled`
+  write, so that parameter is absent on the Neo too (issue #1).
+- The flight that confirmed it: after a warm v1.7 boost, full-stick Sport stayed
+  at about 28 km/h (issue #3).
+- Mavic-generation firmware keeps one config block per flight mode, and Sport top
+  speed is that block's max tilt, `tilt_atti_range`. The Mini 1 dump has stock
+  Sport tilt 30 (range 5 to 40), the Mavic 3 dump 35 (range 10 to 35). The public
+  DJI-Link research on the Mini 1 found no separate m/s cap for manual flight.
+  v1.8 targets that block.
 
 ### 17.4 The warmth gate
 
@@ -788,21 +810,26 @@ Parameters):
 | `flying_limit.max_radius_0` | `0x425c0a94` | Distance ceiling |
 | `api_entry_cfg.authority_level_0` | `0x7b24ba4b` | SDK/API authority level, the 500m-gate candidate |
 | `api_entry_cfg.height_data_type_0` | `0x96a0a2cf` | Height data type |
-| `control.atti_range_0` | `0x9da51eee` | Attitude range, caps Sport speed |
-| `control.horiz_vel_atti_range_0` | `0xde0fff00` | Horizontal-velocity attitude range |
-| `control.atti_limit_0` | `0x9f9646e9` | Caps the maximum of `atti_range` |
+| `control.atti_range_0` | `0x9da51eee` | Phantom-era global, absent on the Neo (bare reply) |
+| `control.horiz_vel_atti_range_0` | `0xde0fff00` | Phantom-era global, absent on the Neo (bare reply) |
+| `control.atti_limit_0` | `0x9f9646e9` | Phantom-era global, absent on the Neo (bare reply) |
 | `control.horiz_emergency_brake_tilt_max_0` | `0x3d833d3a` | Emergency-brake tilt maximum |
 
-Values written by Boost Sport Speed, all little-endian float32, each inside
-its own service window and read back from the 0xF9 echo:
+Values written by Boost Sport Speed since v1.8, little-endian float32, each
+inside its own service window after a 0xFA reset, read back from the 0xF9 echo.
+Hashes are computed in the app with `ParamHash.of`, from the full name:
 
 | Parameter | Hash | Written | Why |
 |---|---|---|---|
-| `control.atti_limit_0` | `0x9f9646e9` | 45.0 deg | Raise the cap on `atti_range` first |
-| `control.atti_range_0` | `0x9da51eee` | 40.0 deg | Max tilt in GPS/Sport, drives horizontal speed |
-| `control.horiz_vel_atti_range_0` | `0xde0fff00` | 40.0 deg | Horizontal-velocity attitude range |
-| `control.vert_up_vel_0` | `0x3d45f2c8` | 6.0 m/s | Max ascent speed, about 3 on the stock Neo |
-| `control.vert_down_vel_0` | `0x70dbcaa7` | 6.0 m/s | Max descent speed |
+| `mode_sport_cfg_tilt_atti_range_0` | `0x3bf365ce` | stock + 10 deg, max 40 (35 if stock unknown) | Sport max tilt, sets Sport top speed; the spelling the Mini 1 answers on |
+| `g_config.mode_sport_cfg.tilt_atti_range_0` | `0x3fe82ae9` | same | The alias spelling in the Mavic 3 dump |
+| `g_config.mode_sport_cfg.rc_scale_0` | `0xb9c1c894` | 1.0 | Full stick maps to the whole tilt (stock 0.925 to 0.95) |
+| `mode_sport_cfg_rc_scale_0` | `0xceafa8c6` | 1.0 | Alias spelling |
+
+What v1.3 to v1.7 wrote, all absent on the Neo (bare `[00]`):
+`g_config.control.atti_limit_0` (`0x9f9646e9`), `atti_range_0` (`0x9da51eee`),
+`horiz_vel_atti_range_0` (`0xde0fff00`), `vert_up_vel_0` (`0x3d45f2c8`),
+`vert_down_vel_0` (`0x70dbcaa7`).
 
 The Read Attitude Parameters probe also covers
 `advanced_function.height_limit_enabled`, `novice_cfg.max_height` and
@@ -922,7 +949,7 @@ Entry points to understand the flow:
 
 ## 21. Where things stand, and what is next
 
-Aligned with app version 1.7.1 (build 9). Done and confirmed on hardware: FCC power
+Aligned with app version 1.8 (build 10). Done and confirmed on hardware: FCC power
 on RC-N3 + DJI Neo. The rest is open reverse engineering, mapped onto the
 repository issues, and the Experimental tab already ships the tool each issue
 needs. What is missing on every one of them is a hardware run with the log
@@ -939,12 +966,16 @@ posted.
   0xFB (v1.2), result not yet recorded. Next: run it and post the log. If 0xFB
   is dead too, the write echo stays the only channel for limits and the flight
   recorder stays the ground truth for control parameters.
-- **~60 km/h on Sport (#3)**. Shipped: the staged boost as float32 writes
-  (v1.4), the warmth gate (v1.5) and the flight recorder (v1.6). Known: integer
-  writes were ignored, float writes are acknowledged without a value echo. Next:
-  a warm boost followed by Record Sport Flight, full stick in open space, and the
-  measured peak km/h decides whether to step the values up. Bounded at about 60,
-  never unlimited.
+- **~60 km/h on Sport (#3)**. Known: the v1.3 to v1.7 boost wrote parameters
+  the Neo does not have (a bare `[00]` on every write), and a flight after a warm
+  boost stayed at about 28 km/h. Shipped in v1.8: the boost on the Sport config
+  block, with an 0xFA reset that may report the stock value, an echo that says
+  absent, accepted or clamped, a ground-only guard, Restore Sport Defaults, and a
+  recorder that logs the tilt at the speed peak. Next: boost on the ground, post
+  the log, then Record Sport Flight. Accepted, with a tilt at peak close to the
+  stored one, means the tilt is the lever: step it up. A tilt well below it means
+  a separate velocity cap. A stored value lower than the one written means the
+  firmware ceiling is reached. Bounded at about 60, never unlimited.
 - **Dropping the "open DJI Fly first" step (#4)**. Shipped: the warmth gate,
   which tells a cold link from a wrong write. Missing: the initialisation DJI Fly
   sends that flips the controller into relaying. Dump All Traffic (FCC tab,

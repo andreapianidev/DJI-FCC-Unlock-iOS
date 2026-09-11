@@ -10,10 +10,11 @@ import SwiftUI
 /// warning so nothing here is a stray tap away.
 ///
 /// Green buttons only read: the 0xF7/0xF8 and 0xFB probes, the telemetry
-/// decode and the flight recorder. Two buttons write: the amber altitude-gate
-/// probe writes altitude/geo limits, the red Sport boost writes flight-control
-/// parameters and needs a low-and-slow flight test. Every write is RAM-only and
-/// a power cycle resets it.
+/// decode and the flight recorder. Three buttons write: the amber altitude-gate
+/// probe writes altitude/geo limits, the red Sport boost writes the Sport
+/// flight-control block (ground only, then a low-and-slow flight test) and the
+/// amber Restore Sport Defaults puts that block back. FCC and altitude writes
+/// are RAM-only; the Sport block may persist across a power cycle.
 struct ExperimentalPage: View {
     @Environment(FccController.self) private var controller
 
@@ -36,10 +37,12 @@ struct ExperimentalPage: View {
                     reports. Unlike the FCC and altitude settings, a wrong value here can make \
                     the drone hard to control or unstable.
 
-                    Green buttons only read and are safe. The amber one writes altitude and geo \
-                    limits. The red one writes flight-control parameters and must be flown low \
-                    and slow in open space. Every write is RAM-only: Restore CE or a power \
-                    cycle resets it. Read first, understand the numbers, then decide.
+                    Green buttons only read and are safe. The amber ones write altitude and geo \
+                    limits, or put the Sport block back to stock. The red one writes \
+                    flight-control parameters, runs only with the drone on the ground, and must \
+                    be flown low and slow in open space. FCC and altitude writes are RAM-only: \
+                    Restore CE or a power cycle resets them. Sport-block writes may survive a \
+                    power cycle, so undo them with Restore Sport Defaults.
                     """,
                     color: Palette.textGray
                 )
@@ -52,12 +55,13 @@ struct ExperimentalPage: View {
                     .padding(.bottom, 12)
                 BodyText(
                     """
-                    The DJI Neo tops out near 60 km/h in manual mode with the goggles, but the \
-                    controller's Sport mode keeps a tighter attitude envelope and so a lower \
-                    speed. The lever is the attitude range: how far the aircraft may tilt. \
-                    Reading it, and the firmware's own maximum for it, tells us whether the \
-                    controller modes can be brought up toward that 60 km/h without going past \
-                    what the flight controller already considers valid.
+                    The DJI Neo tops out near 60 km/h in manual mode with the goggles, while \
+                    the controller's Sport mode stops at 28.8 km/h. On DJI's current flight \
+                    controllers each mode has its own config block, and Sport top speed is that \
+                    block's max tilt. Up to v1.7 the app wrote older global parameters this Neo \
+                    does not have: every write came back as a bare reply and nothing was \
+                    stored. The boost now targets the Sport block and reads back what the \
+                    drone keeps.
                     """
                 )
             }
@@ -172,7 +176,9 @@ struct ExperimentalPage: View {
                     stick forward in open space for about half a minute. The app watches the \
                     drone's own telemetry and records the peak horizontal speed, so we measure \
                     the real km/h without opening DJI Fly, which would reset our writes. Reads \
-                    only, sends nothing. The peak lands in the Log tab at the end.
+                    only, sends nothing. The peak lands in the Log tab at the end, with the tilt \
+                    flown at that moment: a tilt well below the one stored means a separate \
+                    velocity limit, not the tilt, is holding Sport back.
                     """,
                     color: Palette.textGray
                 )
@@ -197,21 +203,26 @@ struct ExperimentalPage: View {
                 .padding(.bottom, 10)
                 BodyText(
                     """
-                    Raises the attitude range and vertical-velocity limits that cap Sport speed \
-                    (28.8 km/h horizontal, 10.8 km/h up on this Neo) toward the ~60 km/h the drone \
-                    reaches with the goggles. These are flight-control parameters: a change alters \
-                    how the aircraft handles. Values are modest and the flight controller clamps \
-                    out-of-range writes, but this must be flown low and slow in open space. A power \
-                    cycle resets it. Run an FCC apply first and check it got responses > 0, or the \
-                    writes will not land.
+                    Resets the Sport block to stock, reads the factory tilt if the drone \
+                    reports it, then writes stock + 10 degrees (never above 40) and full-stick \
+                    scaling 1.0. Up to v1.7 this button wrote older global parameters this Neo \
+                    does not have, so nothing was stored. The Log now says, per parameter, \
+                    whether it exists on this firmware, what the drone stored, and whether it \
+                    clamped the value to its own ceiling. The drone must be on the ground. Then \
+                    record a Sport flight, low and slow in open space: handling and braking \
+                    distance change.
                     """,
                     color: Palette.textGray
                 )
                 .padding(.bottom, 14)
                 if controller.isConnected {
-                    GlowButton(title: "Boost Sport Speed (flight-test)", tint: Palette.red, filled: false) {
+                    GlowButton(title: "Boost Sport Speed (on the ground)", tint: Palette.red, filled: false) {
                         controller.applySpeedBoost()
                     }
+                    GlowButton(title: "Restore Sport Defaults", tint: Palette.amber, filled: false) {
+                        controller.restoreSportDefaults()
+                    }
+                    .padding(.top, 10)
                 } else {
                     BodyText("Connect on the FCC tab first.", color: Palette.textDim)
                 }

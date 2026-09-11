@@ -10,7 +10,7 @@
 [![Platform](https://img.shields.io/badge/Platform-iOS%2017%2B-black?style=flat-square&logo=apple)](#)
 [![Confirmed](https://img.shields.io/badge/RC--N3%20%2B%20DJI%20Neo-confirmed%20on%20hardware-34D399?style=flat-square)](#-confirmed-on-hardware)
 [![Website](https://img.shields.io/badge/Website-andreapiani.com-0A84FF?style=flat-square)](https://www.andreapiani.com/dji-fcc-unlock-ios.html)
-[![Version](https://img.shields.io/badge/Version-1.7.1%20(build%209)-8B5CF6?style=flat-square)](project.yml)
+[![Version](https://img.shields.io/badge/Version-1.8%20(build%2010)-8B5CF6?style=flat-square)](project.yml)
 
 **The first FCC unlock built natively for iPhone.** No server, no account, no
 tracking. Everything runs on device.
@@ -205,7 +205,7 @@ done and confirmed; the rest is open reverse engineering, and it moves faster
 with more hands and more hardware. Everything still to do is written up as
 detailed issues:
 
-- 🛰️ **[#1 Unlock 500m altitude](../../issues/1)** and **[#3 unlock ~60 km/h speed](../../issues/3)**, the headline features, both drone-side RE. The gate probe, the staged Sport boost and its flight recorder are already on the Experimental tab; each now needs a hardware run and the log.
+- 🛰️ **[#1 Unlock 500m altitude](../../issues/1)** and **[#3 unlock ~60 km/h speed](../../issues/3)**, the headline features, both drone-side RE. The gate probe is on the Experimental tab. The Sport boost was rewritten in v1.8, after the log showed the old one wrote parameters the Neo does not have: it now targets the Sport config block and needs a ground run, a recorded flight and the log.
 - 🔑 **[#2 Get the config-table read answering](../../issues/2)**, the tool that unblocks both of the above. 0xF7/0xF8 are dead on this firmware, the 0xF9 echo reads limits only, and the 0xFB read is shipped and waiting for a result.
 - ⚡ **[#4 Drop the "open DJI Fly first" step](../../issues/4)** by initialising the link ourselves. The warmth gate already tells a cold link from a wrong write; the DJI Fly init sequence is what is left to capture.
 - 🧪 **[#5 Testers wanted](../../issues/5)** on RC-N1 / RC-N2 and other aircraft, no coding needed, just a device and a log.

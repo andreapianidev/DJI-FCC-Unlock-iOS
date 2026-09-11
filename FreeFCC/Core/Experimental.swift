@@ -214,40 +214,116 @@ enum ConfigRead {
     ]
 }
 
-/// The staged Sport-speed boost (issue #3).
-///
-/// The Neo caps horizontal speed at 8 m/s (28.8 km/h) and ascent at 3 m/s from
-/// the RC, while it reaches ~16 m/s in manual with the goggles. Horizontal speed
-/// is set by the attitude range (max tilt), capped by atti_limit; ascent by
-/// vert_up_vel. This writes modest values, safe across encodings: as integer
-/// degrees they are an aggressive-but-flyable tilt, and if the parameter is a
-/// different unit or width the write is a no-op rather than an extreme. The
-/// flight controller also clamps out-of-range writes to its own maximum, proven
-/// when max_height 500 stored 120. Flight-safety-critical: test low and slow,
-/// and power-cycle to reset.
-enum SpeedBoost {
-    static let writeByHash = 0xF9
+/// DJI's flight-controller parameter-name hash, the one DJI Fly and
+/// dji-firmware-tools (`flyc_parameter_compute_hash`) use. The whole name is
+/// hashed, `g_config.` prefix and `_0` suffix included:
+/// `g_config.flying_limit.max_height_0` gives 0x0371238a, the hash the Neo
+/// echoes on every apply.
+enum ParamHash {
+    static func of(_ name: String) -> UInt32 {
+        var h: UInt64 = 0
+        // DJI hashes the GBK bytes; for the ASCII names used here GBK is UTF-8.
+        for byte in name.utf8 {
+            h = (((h & 0xFFFF_FFFF) << 8) + UInt64(byte)) % 0xFFFF_FFFB
+        }
+        return UInt32(h)
+    }
+}
 
-    /// A 32-bit float, little-endian, as the config table stores these
-    /// attitude and velocity parameters. The v1.3 integer writes were ignored
-    /// on hardware (full-stick Sport still capped at the normal speed), which
-    /// is the signature of the wrong width: these parameters are floats.
-    private static func f32(_ v: Float) -> [UInt8] {
-        withUnsafeBytes(of: v.bitPattern.littleEndian) { Array($0) }
+/// A by-hash config reply decoded: status(1) + hash(4) + stored value.
+///
+/// On the Neo a parameter that exists answers the 0xF9 write in this full form
+/// (max_height: `00 8A 23 71 03 78 00`). A hash that is not in the table gets a
+/// bare `[00]`: status only, nothing stored. That difference is the only
+/// existence test this firmware offers, since 0xF7/0xF8 never answer.
+struct ParamEcho: Sendable, Equatable {
+    let status: UInt8
+    let hash: UInt32
+    let value: [UInt8]
+
+    init?(_ payload: [UInt8]) {
+        guard payload.count >= 5 else { return nil }
+        status = payload[0]
+        hash = UInt32(payload[1]) | (UInt32(payload[2]) << 8) | (UInt32(payload[3]) << 16) | (UInt32(payload[4]) << 24)
+        value = Array(payload.dropFirst(5))
     }
 
-    static let params: [GateParam] = [
-        GateParam(name: "control.atti_limit_0", hash: 0x9f9646e9, value: f32(45),
-                  note: "raise the cap on atti_range first (degrees)"),
-        GateParam(name: "control.atti_range_0", hash: 0x9da51eee, value: f32(40),
-                  note: "max tilt in GPS/Sport, drives horizontal speed (degrees)"),
-        GateParam(name: "control.horiz_vel_atti_range_0", hash: 0xde0fff00, value: f32(40),
-                  note: "horizontal-velocity attitude range (degrees)"),
-        GateParam(name: "control.vert_up_vel_0", hash: 0x3d45f2c8, value: f32(6),
-                  note: "max ascent speed m/s, was ~3"),
-        GateParam(name: "control.vert_down_vel_0", hash: 0x70dbcaa7, value: f32(6),
-                  note: "max descent speed m/s"),
+    /// The stored value as a little-endian float32, when it is 4 bytes wide.
+    var float: Float? {
+        guard value.count == 4 else { return nil }
+        let bits = UInt32(value[0]) | (UInt32(value[1]) << 8) | (UInt32(value[2]) << 16) | (UInt32(value[3]) << 24)
+        return Float(bitPattern: bits)
+    }
+}
+
+/// The Sport-speed boost, second attempt (issue #3).
+///
+/// v1.3 to v1.7 wrote `g_config.control.atti_range`, `horiz_vel_atti_range`,
+/// `atti_limit`, `vert_up_vel` and `vert_down_vel`. On the Neo every one of
+/// those writes got a bare `[00]`, the reply of a hash that is not in the
+/// table, so nothing was stored and Sport stayed at 28.8 km/h. They are
+/// Phantom-era globals. Mavic-generation firmware (the Mini 1 and Mavic 3
+/// dumps) keeps one config block per flight mode, and Sport top speed is that
+/// block's max tilt, `tilt_atti_range`, a float in degrees. Stock Sport tilt is
+/// 30 on the Mini 1 (range 5 to 40) and 35 on the Mavic 3 (range 10 to 35); the
+/// Neo's is unknown.
+///
+/// Both published spellings of each name are tried, since the dumps list them
+/// as aliases and the live one differs by model (the Mini 1 answers on the
+/// underscore form for tilt). An absent hash is a no-op.
+///
+/// These block parameters persist on the Mini 1 (attribute RW+EE), so unlike
+/// the FCC and altitude writes they may survive a power cycle. Restore Sport
+/// Defaults resets them with 0xFA.
+enum SportBoost {
+    static let writeByHash = 0xF9
+    /// Reset Param To Default By Hash (`DataFlycResetParams` in the DJI SDK).
+    static let resetByHash = 0xFA
+
+    /// The highest tilt this app will ever request, in degrees.
+    static let maxTilt: Float = 40
+    /// How far one boost raises the tilt over the stock value.
+    static let tiltStep: Float = 10
+    /// The tilt written when the stock value could not be read: the Mavic 3
+    /// factory Sport tilt, inside every published range.
+    static let fallbackTilt: Float = 35
+    /// Stick-to-tilt scaling at full stick. 1.0 is the top of every published
+    /// range, so full stick asks for the whole tilt instead of about 95% of it.
+    static let rcScale: Float = 1.0
+
+    enum Kind: Sendable { case tilt, rcScale }
+
+    struct Param: Sendable {
+        let name: String
+        let kind: Kind
+
+        var hash: UInt32 { ParamHash.of(name) }
+
+        var hashLE: [UInt8] {
+            [UInt8(hash & 0xFF), UInt8((hash >> 8) & 0xFF), UInt8((hash >> 16) & 0xFF), UInt8((hash >> 24) & 0xFF)]
+        }
+    }
+
+    static let params: [Param] = [
+        Param(name: "mode_sport_cfg_tilt_atti_range_0", kind: .tilt),
+        Param(name: "g_config.mode_sport_cfg.tilt_atti_range_0", kind: .tilt),
+        Param(name: "g_config.mode_sport_cfg.rc_scale_0", kind: .rcScale),
+        Param(name: "mode_sport_cfg_rc_scale_0", kind: .rcScale),
     ]
+
+    /// Tilt to write, given the stock tilt the 0xFA reset reported. An unknown
+    /// or implausible stock falls back to `fallbackTilt`. Nil means there is
+    /// nothing to raise: stock is already at or above the app's ceiling.
+    static func tiltTarget(stock: Float?) -> Float? {
+        guard let stock, stock >= 5, stock <= 60 else { return fallbackTilt }
+        guard stock < maxTilt else { return nil }
+        return min(stock + tiltStep, maxTilt)
+    }
+
+    /// A 32-bit float, little-endian, as the config table stores these.
+    static func f32(_ v: Float) -> [UInt8] {
+        withUnsafeBytes(of: v.bitPattern.littleEndian) { Array($0) }
+    }
 }
 
 /// Decoder for the FLYCONTROLLER OSD General push (set 0x03, id 0x43), the frame
@@ -275,17 +351,29 @@ enum OsdGeneral {
         return Double(h) * 0.1
     }
 
+    /// Lean angle in degrees from pitch and roll (int16 at 24/26, 0.1 degree),
+    /// the size of the tilt whichever way the aircraft flies.
+    static func tiltDegrees(_ payload: [UInt8]) -> Double? {
+        guard let p = i16(payload, 24), let r = i16(payload, 26) else { return nil }
+        let pitch = Double(p) * 0.1
+        let roll = Double(r) * 0.1
+        return (pitch * pitch + roll * roll).squareRoot()
+    }
+
     static func flightMode(_ payload: [UInt8]) -> String {
-        // The mode byte sits after longitude(8) latitude(8) height(2) vgx/vgy/vgz(6)
-        // pitch/roll/yaw(6) ctrl_info(1) => offset 31.
-        let off = 31
+        // After longitude(8) latitude(8) height(2) vgx/vgy/vgz(6) pitch/roll/yaw(6)
+        // comes one byte, offset 30, that the dissector reads as ctrl_info and
+        // as flyc_state (its low 7 bits). Up to v1.7.1 this read offset 31,
+        // the next field.
+        let off = 30
         guard payload.count > off else { return "?" }
+        let state = Int(payload[off] & 0x7F)
         let names: [Int: String] = [
             0x00: "Manual", 0x01: "Atti", 0x03: "Atti_Hover", 0x04: "Hover",
             0x06: "GPS_Atti (normal)", 0x0a: "AssistedTakeoff", 0x0b: "AutoTakeoff",
             0x0c: "AutoLanding", 0x0f: "GoHome", 0x11: "Joystick",
             0x17: "Atti_Limited", 0x18: "GPS_Atti_Limited",
         ]
-        return names[Int(payload[off])] ?? String(format: "mode 0x%02X", payload[off])
+        return names[state] ?? String(format: "mode 0x%02X", state)
     }
 }
