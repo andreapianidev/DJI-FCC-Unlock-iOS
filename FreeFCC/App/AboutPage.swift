@@ -21,20 +21,24 @@ struct AboutPage: View {
                     .font(.system(size: 20, weight: .black))
                     .foregroundStyle(Palette.textWhite)
                     .padding(.bottom, 6)
-                Text("FCC unlock and 500m altitude for DJI RC-N1 / RC-N2 / RC-N3")
+                Text("FCC unlock for DJI controllers; altitude research in progress")
                     .font(.system(size: 13))
                     .foregroundStyle(Palette.cyan)
                     .padding(.bottom, 16)
                 BodyText(
                     """
                     Switches the radio from CE to FCC mode on a DJI aircraft flown with a cabled \
-                    controller, for higher power and more range, and sets the altitude ceiling to \
-                    500m. No server, no account, no tracking. Every command is built on device \
-                    from a JSON profile you can read on the Profile tab.
+                    controller, for higher power and more range. The profile requests 500m, but \
+                    the tested DJI Neo stores 120m; the altitude unlock remains under investigation. \
+                    No server, no account, no tracking. Commands come from the JSON profile \
+                    shown on the Profile tab.
 
                     The first FCC unlock built natively for iPhone.
                     """
                 )
+                DividerLine().padding(.vertical, 16)
+                InfoRow(label: "Version", value: AppInfo.versionAndBuild)
+                InfoRow(label: "License", value: "PolyForm NC 1.0.0")
             }
 
             GlowCard {
@@ -67,12 +71,10 @@ struct AboutPage: View {
                     FCC region, by setting the country code to US, which is what moves the radio \
                     to the higher-power band and is the same command DJI Fly sends every session.
 
-                    Altitude ceiling, by writing the flight controller's max-height parameter to \
-                    500m and enforcing it. 500m is DJI's own standard maximum, not an override \
-                    beyond it. Honest note: on the DJI Neo the flight controller accepts the \
-                    write but reports the ceiling back as 120m, so the parameter that governs a \
-                    real 500m unlock is still being reverse engineered (issue #1 on GitHub). \
-                    FCC power is separate and works.
+                    Altitude ceiling: the profile requests 500m. On the tested DJI Neo the flight \
+                    controller acknowledges the write but reports 120m, so a real 500m unlock \
+                    is still being reverse engineered (issue #1 on GitHub). FCC power is \
+                    separate and has been confirmed on RC-N3 + DJI Neo.
 
                     Both are RAM-only and revert when the aircraft and controller are power \
                     cycled, so they are re-applied each session.
@@ -143,8 +145,6 @@ struct AboutPage: View {
                     """
                 )
                 DividerLine().padding(.vertical, 16)
-                InfoRow(label: "Version", value: AppInfo.versionAndBuild)
-                InfoRow(label: "License", value: "PolyForm NC 1.0.0")
                 InfoRow(label: "Protocol", value: "DUML")
                 InfoRow(label: "Transport", value: "MFi ExternalAccessory")
                 InfoRow(label: "Server", value: "None, fully offline")

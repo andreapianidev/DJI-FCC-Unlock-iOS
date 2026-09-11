@@ -12,7 +12,7 @@ dopo deve poter capire la logica, riprodurre i risultati, e sapere dove mettere
 le mani per estendere l'app senza ripartire da zero.
 
 Autore, Andrea Piani, www.andreapiani.com.
-Questa revisione corrisponde alla versione 1.7 (build 8) dell'app, settembre 2026.
+Questa revisione corrisponde alla versione 1.7.1 (build 9) dell'app, settembre 2026.
 
 ---
 
@@ -46,9 +46,10 @@ Questa revisione corrisponde alla versione 1.7 (build 8) dell'app, settembre 202
 
 L'app parla al telecomando DJI attraverso il cavo, con lo stesso protocollo che
 usa DJI Fly, e invia una sequenza di comandi che spostano la radio da regione CE
-(20 dBm, circa 0,1 W, potenza europea) a regione FCC (33 dBm, circa 2 W, potenza americana), oltre a fissare il
-tetto di altitudine a 500m. Tutto avviene sul dispositivo, senza server, senza
-account, senza jailbreak.
+(20 dBm, circa 0,1 W, potenza europea) a regione FCC (33 dBm, circa 2 W, potenza americana), oltre a richiedere un
+tetto di altitudine di 500m. Sul DJI Neo provato il valore memorizzato resta
+120m; lo sblocco di altitudine è ancora irrisolto (issue #1). Tutto avviene sul
+dispositivo, senza server, senza account, senza jailbreak.
 
 Il punto tecnico centrale, la cosa che è stata scoperta e resa affidabile, è che
 la regione radio DJI si decide con il codice paese. Impostare il codice paese a
@@ -404,7 +405,7 @@ Ecco cosa fa ciascun frame e perché.
 | 1 | 16/88 | 18 | `030100` | **AUTOTEST enter**, apre il service mode. Da qui in poi i write di parametro sono accettati. |
 | 2 | 6/114 | 6 | `00000000000100` | **RADIO set region param a FCC (01)** verso la radio del telecomando. |
 | 3 | 3/249 | 3 | `8a237103f401` | **FLYCONTROLLER write** `flying_limit.max_height = 500` (0x01F4), il tetto di altitudine. Hash `0371238a` LE + valore. |
-| 4 | 3/249 | 3 | `9ad152ae01` | **FLYCONTROLLER write** `advanced_function.height_limit_enabled = 1`, fa applicare il tetto 500m. |
+| 4 | 3/249 | 3 | `9ad152ae01` | **FLYCONTROLLER write** `advanced_function.height_limit_enabled = 1`, abilita il limite di altezza; il Neo provato memorizza ancora un tetto di 120m. |
 | 5 | 0/0 | 31 | `000001` | **GENERAL activate change** in broadcast al componente aereo. |
 | 6 | 0/50 | 111 | `3131000000` | **GENERAL set country code '11'** verso LB_68013_SKY idx 3. |
 | 7 | 3/175 | 3 | `032400...` | **FLYCONTROLLER write param** (cmd 0xAF). |
@@ -718,6 +719,12 @@ che cambiano come il drone si comporta: è territorio di sicurezza del volo e va
 volato basso e lento in spazio aperto. Ogni write è solo in RAM, un ripristino CE
 o un power cycle lo azzera.
 
+Dalla v1.7.1 le componenti di velocità OSD vengono convertite in `Double` prima
+del quadrato. Questo evita che un overflow degli interi a 16 bit causi un crash
+durante la lettura o la registrazione a partire da 18,2 m/s (65,52 km/h) su un
+asse. I test coprono velocità con segno, modulo del vettore, payload troncati ed
+estremi Int16. La correzione del decoder non dimostra l'efficacia del boost su hardware.
+
 ### 17.2 La disciplina della finestra
 
 Ogni lettura o scrittura sta dentro la sua finestra service-mode stretta: AUTOTEST
@@ -917,7 +924,7 @@ Punti di ingresso per capire il flusso:
 
 ## 21. A che punto siamo, e cosa viene dopo
 
-Allineato alla versione 1.7 (build 8) dell'app. Fatto e confermato su hardware:
+Allineato alla versione 1.7.1 (build 9) dell'app. Fatto e confermato su hardware:
 potenza FCC su RC-N3 + DJI Neo. Il resto è reverse engineering aperto, mappato
 sulle issue del repository, e la scheda Experimental contiene già lo strumento
 che ogni issue richiede. Quello che manca, su ognuna, è un giro su hardware con
@@ -944,10 +951,13 @@ il log postato.
   valori. Limitato a circa 60, mai illimitato.
 - **Eliminare lo step "apri prima DJI Fly" (#4)**. Consegnato: il warmth gate,
   che distingue un link freddo da un write sbagliato. Manca: l'inizializzazione
-  che DJI Fly manda e che mette il telecomando in inoltro. Prossimo passo: Dump
-  All Traffic subito dopo che DJI Fly si connette, trovare i frame che la
-  direzione app-telecomando porta, aggiungere il minimo alla sequenza di
-  connessione. Il successo sono 38 risposte a freddo.
+  che DJI Fly manda e che mette il telecomando in inoltro. Dump All Traffic
+  (scheda FCC, Diagnostics) mostra i frame ricevuti da questa app, non il
+  traffico in uscita da DJI Fly. Serve una cattura separata del traffico
+  DJI Fly-telecomando per ricostruire l'handshake. Il census permette di
+  confrontare sessioni fredde e calde; aggiungere la sequenza solo dopo averla
+  catturata. L'apply riuscito di riferimento aveva 38 risposte; verificare
+  avvii ripetuti a freddo senza DJI Fly.
 - **Tester su RC-N1 / RC-N2 e altri droni (#5)**. Ancora confermato su una sola
   coppia. Nessun codice richiesto: un dispositivo, il pulsante di condivisione
   della scheda Log, e la stringa di protocollo che il telecomando annuncia.

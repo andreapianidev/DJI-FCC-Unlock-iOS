@@ -28,7 +28,7 @@ struct FlycParam: Sendable, Identifiable {
 }
 
 /// The parameters the speed experiment reads. max_height is first as a
-/// self-check: its value is known to be 500 after an FCC apply, so a correct
+/// self-check: the tested Neo reports 120 even after requesting 500, so a correct
 /// read of it proves the read path and the hash encoding before any attitude
 /// parameter is trusted.
 enum SpeedExperiment {
@@ -40,7 +40,7 @@ enum SpeedExperiment {
     static let params: [FlycParam] = [
         // Altitude and geo limits, the reverse-engineering targets for 500m.
         FlycParam(name: "flying_limit.max_height", hash: 0x0371238a,
-                  note: "The aircraft height ceiling. Should read 500 after apply"),
+                  note: "The aircraft height ceiling. Tested Neo reports 120 after requesting 500"),
         FlycParam(name: "flying_limit.max_radius", hash: 0x425c0a94,
                   note: "The distance ceiling"),
         FlycParam(name: "advanced_function.height_limit_enabled", hash: 0xae52d19a,
@@ -263,7 +263,10 @@ enum OsdGeneral {
     /// Horizontal ground speed in km/h from Vgx and Vgy.
     static func horizontalKmh(_ payload: [UInt8]) -> Double? {
         guard let vx = i16(payload, 18), let vy = i16(payload, 20) else { return nil }
-        let ms = (Double(vx * vx) + Double(vy * vy)).squareRoot() * 0.1
+        // Convert before multiplying: Int16 overflows at |component| >= 182.
+        let x = Double(vx)
+        let y = Double(vy)
+        let ms = (x * x + y * y).squareRoot() * 0.1
         return ms * 3.6
     }
 

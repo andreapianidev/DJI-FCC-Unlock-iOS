@@ -26,6 +26,7 @@
 		933872E3C8738C4FBBBBB2E9 /* Experimental.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01436346C11A8EE6CA47CC57 /* Experimental.swift */; };
 		9A05C7ECC78F709094978EF8 /* RCLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF340DD20FEDDE1B6A9F8188 /* RCLink.swift */; };
 		9D07FA84B62395C2C149CA93 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 384DE1489CC3E1C8AAA136BA /* Assets.xcassets */; };
+		AFF1192314592607D0703103 /* OsdGeneralTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E36E3BAA3849908DD68A3238 /* OsdGeneralTests.swift */; };
 		CEE9CA3AF49406C0DABF4EDB /* DumplBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17DB275E76F321F2FBFFDF0D /* DumplBuilder.swift */; };
 		F172F2F5ACAD38FEF33DF3C6 /* DiagnosticLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3883CFA580FEDD918B3C65F6 /* DiagnosticLog.swift */; };
 /* End PBXBuildFile section */
@@ -59,6 +60,7 @@
 		BFCE24BA821820607A43C063 /* ProfileLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileLoader.swift; sourceTree = "<group>"; };
 		C9560895781E977F93661B68 /* DumplStreamParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DumplStreamParserTests.swift; sourceTree = "<group>"; };
 		DF340DD20FEDDE1B6A9F8188 /* RCLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RCLink.swift; sourceTree = "<group>"; };
+		E36E3BAA3849908DD68A3238 /* OsdGeneralTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OsdGeneralTests.swift; sourceTree = "<group>"; };
 		EA329F636A29B171A430D2A7 /* AboutPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutPage.swift; sourceTree = "<group>"; };
 		EF3C724D381CECC33043FB49 /* ProfileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileTests.swift; sourceTree = "<group>"; };
 		F1AB6B9B8D91A5BC3E3C00F8 /* FccController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FccController.swift; sourceTree = "<group>"; };
@@ -107,6 +109,7 @@
 			children = (
 				1F945186B0344A4838B54BAB /* DumplBuilderTests.swift */,
 				C9560895781E977F93661B68 /* DumplStreamParserTests.swift */,
+				E36E3BAA3849908DD68A3238 /* OsdGeneralTests.swift */,
 				EF3C724D381CECC33043FB49 /* ProfileTests.swift */,
 			);
 			path = FreeFCCTests;
@@ -243,6 +246,7 @@
 			files = (
 				320AD0030BD91BC2F23314B5 /* DumplBuilderTests.swift in Sources */,
 				176F59F1B50BEADD0020F1BE /* DumplStreamParserTests.swift in Sources */,
+				AFF1192314592607D0703103 /* OsdGeneralTests.swift in Sources */,
 				56DB200FAD44E865227512B3 /* ProfileTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -373,7 +377,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = ERAK83QBBM;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -388,7 +392,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.7;
+				MARKETING_VERSION = 1.7.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -436,7 +440,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = ERAK83QBBM;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -457,7 +461,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 1.7;
+				MARKETING_VERSION = 1.7.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

@@ -12,7 +12,7 @@ next should be able to understand the logic, reproduce the results, and know
 where to put their hands to extend the app without starting from scratch.
 
 Author, Andrea Piani, www.andreapiani.com.
-This revision matches app version 1.7 (build 8), September 2026.
+This revision matches app version 1.7.1 (build 9), September 2026.
 
 ---
 
@@ -47,8 +47,9 @@ This revision matches app version 1.7 (build 8), September 2026.
 The app talks to the DJI remote controller over the cable, using the same
 protocol DJI Fly uses, and sends a sequence of commands that move the radio from
 the CE region (20 dBm, about 100 mW, European power) to the FCC region (33 dBm, about 2 W, American power), and
-also sets the altitude ceiling to 500m. Everything happens on the device, with
-no server, no account, no jailbreak.
+requests an altitude ceiling of 500m. On the tested DJI Neo, the stored ceiling
+remains 120m; the altitude unlock is unresolved (issue #1). Everything happens on
+the device, with no server, no account, no jailbreak.
 
 The central technical point, the thing that was discovered and made reliable, is
 that the DJI radio region is decided by the country code. Setting the country
@@ -402,7 +403,7 @@ Here is what each frame does and why.
 | 1 | 16/88 | 18 | `030100` | **AUTOTEST enter**, opens service mode. From here on parameter writes are accepted. |
 | 2 | 6/114 | 6 | `00000000000100` | **RADIO set region param to FCC (01)** towards the remote's radio. |
 | 3 | 3/249 | 3 | `8a237103f401` | **FLYCONTROLLER write** `flying_limit.max_height = 500` (0x01F4), the altitude ceiling. Hash `0371238a` LE + value. |
-| 4 | 3/249 | 3 | `9ad152ae01` | **FLYCONTROLLER write** `advanced_function.height_limit_enabled = 1`, makes the 500m ceiling apply. |
+| 4 | 3/249 | 3 | `9ad152ae01` | **FLYCONTROLLER write** `advanced_function.height_limit_enabled = 1`, enables height-limit enforcement; the tested Neo still stores a 120m ceiling. |
 | 5 | 0/0 | 31 | `000001` | **GENERAL activate change** broadcast to the aircraft component. |
 | 6 | 0/50 | 111 | `3131000000` | **GENERAL set country code '11'** towards LB_68013_SKY idx 3. |
 | 7 | 3/175 | 3 | `032400...` | **FLYCONTROLLER write param** (cmd 0xAF). |
@@ -717,6 +718,12 @@ the aircraft handles: it is flight-safety territory and has to be flown low and
 slow in open space. Every write is RAM-only, a CE restore or a power cycle resets
 it.
 
+Since v1.7.1, OSD velocity components are converted to `Double` before squaring.
+This prevents a signed 16-bit overflow from crashing telemetry reads or flight
+recording at an axis speed of 18.2 m/s (65.52 km/h) or above. Regression tests
+cover signed velocities, vector magnitude, truncated payloads and Int16 extremes.
+This decoder fix does not establish whether the Sport boost works on hardware.
+
 ### 17.2 The window discipline
 
 Each read or write sits inside its own tight service-mode window: AUTOTEST enter,
@@ -915,7 +922,7 @@ Entry points to understand the flow:
 
 ## 21. Where things stand, and what is next
 
-Aligned with app version 1.7 (build 8). Done and confirmed on hardware: FCC power
+Aligned with app version 1.7.1 (build 9). Done and confirmed on hardware: FCC power
 on RC-N3 + DJI Neo. The rest is open reverse engineering, mapped onto the
 repository issues, and the Experimental tab already ships the tool each issue
 needs. What is missing on every one of them is a hardware run with the log
@@ -940,9 +947,12 @@ posted.
   never unlimited.
 - **Dropping the "open DJI Fly first" step (#4)**. Shipped: the warmth gate,
   which tells a cold link from a wrong write. Missing: the initialisation DJI Fly
-  sends that flips the controller into relaying. Next: Dump All Traffic right
-  after DJI Fly connects, find the frames the app-to-RC direction carries, add
-  the minimum to the connect sequence. Success is 38 responses on a cold start.
+  sends that flips the controller into relaying. Dump All Traffic (FCC tab,
+  Diagnostics) shows frames received by this app, not DJI Fly outgoing traffic.
+  Capturing the DJI Fly handshake needs a separate capture of its app-to-RC
+  traffic. Use the received-frame census to compare cold and warmed sessions;
+  add an init sequence only after capturing it. The reference successful apply
+  had 38 responses; validate repeated cold starts without DJI Fly.
 - **Testers on RC-N1 / RC-N2 and other aircraft (#5)**. Still confirmed on one
   pair only. No code required: a device, the Log tab share button, and the
   protocol string the controller advertises.

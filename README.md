@@ -2,7 +2,7 @@
 
 # 📡 Free FCC Unlock for iOS
 
-### FCC unlock and 500m altitude for DJI RC-N1 / RC-N2 / RC-N3, native on iPhone
+### FCC unlock for DJI controllers, native on iPhone; 500m altitude research in progress
 
 [![DJI FCC mode, unlocked from an iPhone. Free for noncommercial use.](docs/hero.jpg)](https://www.andreapiani.com/dji-fcc-unlock-ios.html)
 
@@ -10,7 +10,7 @@
 [![Platform](https://img.shields.io/badge/Platform-iOS%2017%2B-black?style=flat-square&logo=apple)](#)
 [![Confirmed](https://img.shields.io/badge/RC--N3%20%2B%20DJI%20Neo-confirmed%20on%20hardware-34D399?style=flat-square)](#-confirmed-on-hardware)
 [![Website](https://img.shields.io/badge/Website-andreapiani.com-0A84FF?style=flat-square)](https://www.andreapiani.com/dji-fcc-unlock-ios.html)
-[![Version](https://img.shields.io/badge/Version-1.7%20(build%208)-8B5CF6?style=flat-square)](project.yml)
+[![Version](https://img.shields.io/badge/Version-1.7.1%20(build%209)-8B5CF6?style=flat-square)](project.yml)
 
 **The first FCC unlock built natively for iPhone.** No server, no account, no
 tracking. Everything runs on device.
@@ -41,7 +41,7 @@ An app by [Andrea Piani](https://www.andreapiani.com). Project page and FAQ:
 | | Feature |
 |---|---|
 | 📶 | **FCC unlock.** Switches the radio from CE to FCC: 33 dBm (about 2 W) instead of 20 dBm (about 100 mW) on 2.4 GHz, DJI's own limits for the RC-N3, for more channels and more range. |
-| 🛰️ | **500m altitude.** Sets the flight-controller ceiling to 500m, DJI's own standard maximum. |
+| 🛰️ | **Altitude research.** Requests 500m; the tested DJI Neo stores 120m. A working altitude unlock is still under investigation (#1). |
 | 🔌 | **Native MFi.** Talks to the controller over the same certified channel DJI Fly uses, no jailbreak, no desktop, no second device. |
 | 🔍 | **Readable.** Every byte sent is a plain JSON profile you can inspect on the Profile tab. |
 | 🔒 | **Offline.** No server contact, no account, no tracking, ever. |
@@ -63,6 +63,9 @@ An app by [Andrea Piani](https://www.andreapiani.com). Project page and FAQ:
 <td><img src="docs/screenshots/04-about.jpg" width="200" alt="About"></td>
 </tr>
 </table>
+
+The FCC and Log captures predate the fifth tab and show four tabs; Profile and
+About show five. The green connection states require real hardware to recapture.
 
 There is a fifth tab, **Experimental**, with the reverse-engineering probes the
 issues below refer to: green buttons only read, the amber one writes altitude
@@ -189,10 +192,10 @@ FreeFCC/
            experimental probes)
   App/     SwiftUI screens (FCC, Log, Profile, Experimental, About) and design system
   Resources/profiles/   fcc.json (FCC + 500m), ce_restore.json
-FreeFCCTests/            frames, parser, profile and altitude checks
+FreeFCCTests/            frames, parser, profiles and OSD speed regression checks
 docs/TECHNICAL-DOCUMENTATION.md  full protocol + architecture writeup (English)
 docs/DOCUMENTAZIONE-TECNICA.md   the same writeup in Italian
-docs/screenshots/        the images above (retake from a simulator build with -initialTab N)
+docs/screenshots/        hardware captures; Profile/About can use -initialTab N
 ```
 
 ## 🤝 Contributing, help wanted
