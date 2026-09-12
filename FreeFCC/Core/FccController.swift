@@ -160,9 +160,9 @@ final class FccController {
     /// sample of the most recent payload, so the real conversation on the link
     /// can be read rather than guessed at.
     private let frameCensus = Protected([Int: (count: Int, sample: [UInt8])]())
-    /// Stock Sport-block values the 0xFA reset reported, keyed by hash, so a
-    /// restore can write them back even if a later reset goes unanswered.
-    private let sportStock = Protected([UInt32: Float]())
+    /// One Sport-block run at a time: a second tap would queue behind the
+    /// first and land on a link that has gone cold by then.
+    private let sportRunning = Protected(false)
     /// The Sport tilt the drone last echoed as stored, for the flight recorder
     /// to compare with the tilt actually flown.
     private let sportTiltStored = Protected<Float?>(nil)
@@ -1473,14 +1473,15 @@ final class FccController {
     // MARK: Experimental, Sport-speed boost (issue #3, writes control params)
 
     /// Raises the Sport block's max tilt, which sets Sport top speed on
-    /// Mavic-generation firmware, and reads back what the drone stored. For
-    /// each Sport-block name it first resets to stock with 0xFA, which may
-    /// report the factory value, then writes stock + 10 degrees (never above
-    /// 40) with 0xF9 and decodes the echo. A bare `[00]` means the name is not
-    /// on this firmware; a stored value below the written one means the flight
-    /// controller clamped it to its own ceiling. Ground only.
+    /// Mavic-generation firmware, and reads back what the drone stored. Each
+    /// Sport-block name is written with 0xF9 and its echo decoded: a bare
+    /// `[00]` means the name is not on this firmware, a stored value below the
+    /// written one means the flight controller clamped it to its own ceiling.
+    /// Silence means neither, so after a silence the link warmth is checked
+    /// again and a cold link stops the run with the rest marked untested.
+    /// Ground only, one run at a time.
     func applySpeedBoost() {
-        guard requireConnection() else { return }
+        guard requireConnection(), beginSportRun() else { return }
         if !aircraftLinked {
             log("WARNING: no aircraft linked. Writes will not land.")
         }
@@ -1488,57 +1489,47 @@ final class FccController {
         engineQueue.async { [weak self] in self?.applySpeedBoostSync() }
     }
 
+    private func beginSportRun() -> Bool {
+        let started = sportRunning.withLock { running -> Bool in
+            guard !running else { return false }
+            running = true
+            return true
+        }
+        if !started { log("A Sport-block run is already in progress. Wait for it to finish.") }
+        return started
+    }
+
     private nonisolated func applySpeedBoostSync() {
+        defer { sportRunning.value = false }
         guard sportPreflight(action: "Nothing written") else { return }
-        postLog("Link is WARM. Resetting the Sport block to stock, then writing the boost.")
-        postLog("Flight-safety: test low and slow in open space. Restore Sport Defaults undoes it; a power cycle may not.")
+        postLog("Link is WARM. Writing the Sport block (32-bit floats).")
+        postLog("Flight-safety: test low and slow in open space. A power cycle may not undo it.")
 
-        // Pass 1: reset to stock. Where the reply carries the hash, the name
-        // exists here and the value is the factory one.
-        var stock: [UInt32: Float] = [:]
-        for p in SportBoost.params {
-            postLog(String(format: "• %@  (hash %08X)", p.name, p.hash))
-            guard let reply = byHashInWindow(SportBoost.resetByHash, p.hashLE) else {
-                postLog("  reset: no reply")
-                continue
-            }
-            postLog("  reset: \(describeSportReply(reply))")
-            if let echo = ParamEcho(reply), echo.hash == p.hash, let value = echo.float {
-                stock[p.hash] = value
-            }
-            Thread.sleep(forTimeInterval: 0.08)
-        }
-        sportStock.withLock { $0.merge(stock) { _, new in new } }
-
-        let stockTilt = SportBoost.params.first { $0.kind == .tilt && stock[$0.hash] != nil }.flatMap { stock[$0.hash] }
-        let tilt = SportBoost.tiltTarget(stock: stockTilt)
-        if let stockTilt {
-            postLog(String(format: "Stock Sport tilt reported by the drone: %.1f°", stockTilt))
-        } else {
-            postLog(String(format: "Stock Sport tilt not reported, using the fallback %.0f°.", SportBoost.fallbackTilt))
-        }
-
-        // Pass 2: write the boost and read back what was stored.
+        // 0xFA got no reply on any name (Neo, 12 Sep 2026), so the stock tilt
+        // cannot be read and the fallback is written. The writes run alone and
+        // first: the link stays warm only about half a minute after DJI Fly.
+        let tilt = SportBoost.tiltTarget(stock: nil) ?? SportBoost.fallbackTilt
         var present = 0
+        var bare = 0
+        var silent = 0
         var clamped = false
-        for p in SportBoost.params {
-            let value: Float
-            switch p.kind {
-            case .tilt:
-                guard let tilt else {
-                    postLog(String(format: "• %@: stock is already at or above the app's %.0f° ceiling, not raised", p.name, SportBoost.maxTilt))
+        var untested: [String] = []
+        for (index, p) in SportBoost.params.enumerated() {
+            let value = p.kind == .tilt ? tilt : SportBoost.rcScale
+            postLog(String(format: "• %@  (hash %08X)  writing %.2f", p.name, p.hash, value))
+            guard let reply = byHashInWindow(SportBoost.writeByHash, p.hashLE + SportBoost.f32(value)) else {
+                // Silence is not absence: find out whether the link just went cold.
+                if linkIsWarm() {
+                    silent += 1
+                    postLog("  no reply on a warm link: unknown, not absent")
                     continue
                 }
-                value = tilt
-            case .rcScale:
-                value = SportBoost.rcScale
-            }
-            postLog(String(format: "• %@  writing %.2f", p.name, value))
-            guard let reply = byHashInWindow(SportBoost.writeByHash, p.hashLE + SportBoost.f32(value)) else {
-                postLog("  no reply")
-                continue
+                untested = SportBoost.params[index...].map(\.name)
+                postLog("  no reply, and the link has gone cold: this name and the ones after it are untested")
+                break
             }
             guard let echo = ParamEcho(reply), echo.hash == p.hash else {
+                bare += 1
                 postLog("  \(describeSportReply(reply)): bare reply, this name is not in the firmware's table. Nothing stored.")
                 continue
             }
@@ -1559,46 +1550,49 @@ final class FccController {
             Thread.sleep(forTimeInterval: 0.08)
         }
 
-        if present == 0 {
-            postLog("No Sport-block name exists on this firmware either. Neither the old globals nor the Mavic-generation block are here; the Neo's own table is needed (issue #3). Nothing was stored.")
-        } else if clamped {
-            postLog("Stored, but clamped. The firmware caps the Sport block below the requested value, so this is as far as parameters go. Record a Sport flight to measure what the clamped value gives.")
-        } else {
-            postLog("Boost stored. Now tap Record Sport Flight and fly Sport, full stick, low, in open space. The recorder compares the tilt flown with the tilt stored.")
+        if !untested.isEmpty {
+            postLog("The link went cold mid-run. Untested, not absent: \(untested.joined(separator: ", ")).")
+            postLog("Open DJI Fly to the LIVE CAMERA, close it, connect, and tap Boost straight away, before the FCC apply.")
+        }
+        if present > 0 {
+            if clamped {
+                postLog("Stored, but clamped. The firmware caps the Sport block below the requested value, so this is as far as parameters go. Record a Sport flight to measure what the clamped value gives.")
+            } else {
+                postLog("Boost stored. Now tap Record Sport Flight and fly Sport, full stick, low, in open space. The recorder compares the tilt flown with the tilt stored.")
+            }
+        } else if untested.isEmpty && silent == 0 {
+            postLog("Every Sport-block name got a bare reply: none exists on this firmware. Neither the old globals nor the Mavic-generation block are here; the Neo's own table is needed (issue #3). Nothing was stored.")
+        } else if untested.isEmpty {
+            postLog("\(silent) name(s) got no reply on a warm link and \(bare) a bare reply. Inconclusive: run it again.")
         }
     }
 
-    /// Puts the Sport block back to stock: a 0xFA reset on every Sport-block
-    /// name, then, where the boost learned the factory value, a 0xF9 write of
-    /// it with the echo decoded, so the restore is confirmed even if 0xFA
-    /// answers with a status only. Ground only.
+    /// Sends a 0xFA reset on every Sport-block name and decodes the replies.
+    /// On the Neo 0xFA has not answered so far, so the restore is unconfirmed
+    /// there; only a name that echoed ACCEPTED in a boost was ever changed.
+    /// Ground only, one run at a time.
     func restoreSportDefaults() {
-        guard requireConnection() else { return }
+        guard requireConnection(), beginSportRun() else { return }
         log("Experimental: restoring the Sport block to stock")
         engineQueue.async { [weak self] in self?.restoreSportDefaultsSync() }
     }
 
     private nonisolated func restoreSportDefaultsSync() {
+        defer { sportRunning.value = false }
         guard sportPreflight(action: "Nothing restored") else { return }
-        let stock = sportStock.value
+        var confirmed = 0
         for p in SportBoost.params {
             postLog("• \(p.name)")
             if let reply = byHashInWindow(SportBoost.resetByHash, p.hashLE) {
                 postLog("  reset: \(describeSportReply(reply))")
+                if let echo = ParamEcho(reply), echo.hash == p.hash { confirmed += 1 }
             } else {
                 postLog("  reset: no reply")
             }
-            if let value = stock[p.hash] {
-                if let reply = byHashInWindow(SportBoost.writeByHash, p.hashLE + SportBoost.f32(value)) {
-                    postLog(String(format: "  wrote stock %.2f: %@", value, describeSportReply(reply)))
-                } else {
-                    postLog(String(format: "  wrote stock %.2f: no reply", value))
-                }
-            }
             Thread.sleep(forTimeInterval: 0.08)
         }
-        sportTiltStored.value = SportBoost.params.first { $0.kind == .tilt && stock[$0.hash] != nil }.flatMap { stock[$0.hash] }
-        postLog("Restore done. A reply that carries the parameter's hash confirms it; a bare reply means this firmware has no such name, so there was nothing to restore.")
+        if confirmed > 0 { sportTiltStored.value = nil }
+        postLog("Restore done, \(confirmed) reset(s) confirmed by the parameter's hash. With none confirmed the reset is unknown; only a name that echoed ACCEPTED in a boost was ever changed.")
     }
 
     /// The checks both Sport-block writers run first: aircraft linked, on the
@@ -1617,7 +1611,7 @@ final class FccController {
         postLog("Checking link warmth (max_height echo)...")
         guard linkIsWarm() else {
             postLog("Link is COLD: max_height did not echo, so the controller is not relaying to the aircraft.")
-            postLog("Open DJI Fly, wait for the LIVE CAMERA image, close it, then retry within ~15s. \(action).")
+            postLog("Reconnecting the controller is not enough. Open DJI Fly, wait for the LIVE CAMERA image, close it, connect, then tap straight away: the link stays warm about half a minute. \(action).")
             return false
         }
         return true

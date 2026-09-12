@@ -203,14 +203,15 @@ struct ExperimentalPage: View {
                 .padding(.bottom, 10)
                 BodyText(
                     """
-                    Resets the Sport block to stock, reads the factory tilt if the drone \
-                    reports it, then writes stock + 10 degrees (never above 40) and full-stick \
-                    scaling 1.0. Up to v1.7 this button wrote older global parameters this Neo \
-                    does not have, so nothing was stored. The Log now says, per parameter, \
-                    whether it exists on this firmware, what the drone stored, and whether it \
-                    clamped the value to its own ceiling. The drone must be on the ground. Then \
+                    Writes the Sport block: max tilt 35 degrees and full-stick scaling 1.0, \
+                    then reads back what the drone stored. Up to v1.7 this button wrote older \
+                    global parameters this Neo does not have, so nothing was stored. The Log \
+                    says, per parameter, whether it exists on this firmware, what the drone \
+                    stored, and whether it clamped the value to its own ceiling. The link \
+                    stays warm only about half a minute after DJI Fly: connect and tap this \
+                    straight away, before the FCC apply, with the drone on the ground. Then \
                     record a Sport flight, low and slow in open space: handling and braking \
-                    distance change.
+                    distance change. Restore sends a reset the Neo has not answered so far.
                     """,
                     color: Palette.textGray
                 )
