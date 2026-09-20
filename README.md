@@ -11,6 +11,7 @@
 [![Confirmed](https://img.shields.io/badge/RC--N3%20%2B%20DJI%20Neo-confirmed%20on%20hardware-34D399?style=flat-square)](#-confirmed-on-hardware)
 [![Website](https://img.shields.io/badge/Website-andreapiani.com-0A84FF?style=flat-square)](https://www.andreapiani.com/dji-fcc-unlock-ios.html)
 [![Version](https://img.shields.io/badge/Version-1.8.1%20(build%2011)-8B5CF6?style=flat-square)](project.yml)
+[![Build](../../actions/workflows/build.yml/badge.svg)](../../actions/workflows/build.yml)
 
 **The first FCC unlock built natively for iPhone.** No server, no account, no
 tracking. Everything runs on device.
@@ -111,6 +112,26 @@ Pick your iPhone as the destination and Run. The project signs with the team
 wildcard profile, so no App Store Connect setup is needed. This is a sideload for
 your own hardware, not an App Store build: it opens DJI's MFi protocol strings
 and changes a regulatory radio setting.
+
+### Install without a Mac
+
+Every push builds an **unsigned `.ipa`** in CI, so reporting a hardware log does
+not require owning a Mac. Open the [Build workflow](../../actions/workflows/build.yml),
+pick the latest green run and download the `FreeFCC-<version>-build<n>-unsigned`
+artifact.
+
+Be clear about what that file is: it carries **no signature and no provisioning
+profile**, so an iPhone will refuse it as it comes out of CI. It has to be
+re-signed with your own Apple ID first, with [Sideloadly](https://sideloadly.io)
+or [AltStore](https://altstore.io) on Windows, Linux or macOS. A free Apple ID
+signs it for 7 days; a paid developer account, for a year.
+
+The MFi protocol strings the app needs (`com.dji.logiclink` and the rest) live in
+`Info.plist` and survive re-signing, so a re-signed build talks to the controller
+exactly like one built in Xcode.
+
+If a run fails on your fork, open an issue with the job log rather than patching
+around it; the workflow is meant to work for everyone.
 
 ## 🚀 Using it
 

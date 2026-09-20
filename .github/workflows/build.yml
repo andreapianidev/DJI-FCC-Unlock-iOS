@@ -1,0 +1,113 @@
+# SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+# Copyright (C) 2026 Andrea Piani. https://www.andreapiani.com
+# FreeFCC for iOS. Free for noncommercial use only. See LICENSE and NOTICE.md.
+#
+# Builds an UNSIGNED .ipa on every push and on demand, so that contributing a
+# hardware log does not first require owning a Mac. The artifact cannot be
+# installed as it comes out of here: it carries no signature and no
+# provisioning profile, so it has to be re-signed with your own Apple ID
+# before an iPhone will accept it. See README, "Install without a Mac".
+
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Unit tests (simulator)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          ls /Applications | grep -i '^Xcode' || true
+
+      - name: Generate the project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Pick an available iPhone simulator
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          devices = json.load(sys.stdin)['devices']
+          print(next(d['udid']
+                     for rt in sorted(devices)
+                     if 'iOS' in rt
+                     for d in devices[rt]
+                     if d.get('isAvailable') and 'iPhone' in d['name']))
+          ")
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          xcrun simctl list devices available | grep "$UDID"
+
+      - name: Test
+        run: |
+          xcodebuild test \
+            -project FreeFCC.xcodeproj \
+            -scheme FreeFCC \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            CODE_SIGNING_ALLOWED=NO
+
+  ipa:
+    name: Unsigned IPA
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: xcodebuild -version
+
+      - name: Generate the project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build for device, unsigned
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project FreeFCC.xcodeproj \
+            -scheme FreeFCC \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build/ci \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM=""
+
+      - name: Package the .app into an .ipa
+        id: pack
+        run: |
+          APP="build/ci/Build/Products/Release-iphoneos/FreeFCC.app"
+          test -d "$APP" || { echo "No .app at $APP"; exit 1; }
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Info.plist")
+          BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Info.plist")
+          NAME="FreeFCC-${VERSION}-build${BUILD}-unsigned"
+          rm -rf Payload "$NAME.ipa"
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -qry "$NAME.ipa" Payload
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "Built $NAME.ipa"
+          ls -lh "$NAME.ipa"
+          codesign -dv "$APP" 2>&1 || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.pack.outputs.name }}
+          path: ${{ steps.pack.outputs.name }}.ipa
+          if-no-files-found: error
+          retention-days: 30
