@@ -11,7 +11,7 @@
 [![Confirmed](https://img.shields.io/badge/RC--N3%20%2B%20DJI%20Neo-confirmed%20on%20hardware-34D399?style=flat-square)](#-confirmed-on-hardware)
 [![Website](https://img.shields.io/badge/Website-andreapiani.com-0A84FF?style=flat-square)](https://www.andreapiani.com/dji-fcc-unlock-ios.html)
 [![Version](https://img.shields.io/badge/Version-1.8.1%20(build%2011)-8B5CF6?style=flat-square)](project.yml)
-[![Build](../../actions/workflows/build.yml/badge.svg)](../../actions/workflows/build.yml)
+[![Build](https://github.com/andreapianidev/DJI-FCC-Unlock-iOS/actions/workflows/build.yml/badge.svg)](https://github.com/andreapianidev/DJI-FCC-Unlock-iOS/actions/workflows/build.yml)
 
 **The first FCC unlock built natively for iPhone.** No server, no account, no
 tracking. Everything runs on device.
@@ -116,7 +116,7 @@ and changes a regulatory radio setting.
 ### Install without a Mac
 
 Every push builds an **unsigned `.ipa`** in CI, so reporting a hardware log does
-not require owning a Mac. Open the [Build workflow](../../actions/workflows/build.yml),
+not require owning a Mac. Open the [Build workflow](https://github.com/andreapianidev/DJI-FCC-Unlock-iOS/actions/workflows/build.yml),
 pick the latest green run and download the `FreeFCC-<version>-build<n>-unsigned`
 artifact.
 
