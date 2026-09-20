@@ -1,0 +1,114 @@
+name: Hardware report
+description: Report what the app did on your controller and aircraft, whether it worked or not
+title: "[hardware] <controller> + <aircraft>: "
+labels: ["hardware-report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A report where FCC did **not** take is worth as much as one where it did.
+        Confirmed so far on RC-N3 + DJI Neo only, so anything else is new ground.
+
+        **Before you post, remove your aircraft serial number.** The app prints it
+        on the line that starts with `Aircraft detected:`.
+
+  - type: input
+    id: controller
+    attributes:
+      label: Controller
+      description: The model, and the name the app printed on the `Accessory:` line if it differs
+      placeholder: DJI RC-N3 (app shows "DJI RC151")
+    validations:
+      required: true
+
+  - type: input
+    id: aircraft
+    attributes:
+      label: Aircraft
+      placeholder: DJI Mini 5 Pro
+    validations:
+      required: true
+
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware versions
+      description: Aircraft and controller, as DJI Fly shows them
+      placeholder: "aircraft 01.00.700, controller 01.00.0400"
+    validations:
+      required: true
+
+  - type: input
+    id: app-version
+    attributes:
+      label: App version and iOS version
+      description: The first line of the shared log has the app version
+      placeholder: "FCC Unlock 1.8.1 build 11, iPhone 15 Pro Max, iOS 27.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: What happened
+      options:
+        - FCC took, confirmed on the DJI Fly Transmission graph
+        - The sweep reported responses, but the Transmission graph still shows CE
+        - Zero responses on every path
+        - The app never saw the controller at all
+        - Something else, described below
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Activity log
+      description: |
+        The Log tab has a share button. Paste the whole thing or attach the file.
+        Do not trim it: the byte counts and the framing line at the end are often
+        where the answer is.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: census
+    attributes:
+      label: Dump All Traffic output
+      description: |
+        **This is the single most useful thing in the whole report, and it is the
+        one people leave out.** Connect, wait 10 to 15 seconds so the census
+        fills, then tap **Dump All Traffic** on the FCC tab. It prints every
+        inbound frame kind as `sender->dst set=XX id=XX xN`.
+
+        The automatic log only prints the count ("Census has N distinct frame
+        kinds"). That count is not the census. Press the button.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: read-power-mode
+    attributes:
+      label: Read Power Mode (safe) output
+      description: |
+        Optional but it halves the search space when the sweep got nothing. A
+        pure query to the controller itself, not relayed to the drone, so it
+        separates "the controller ignores us" from "the controller does not
+        relay to the aircraft".
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: sequence
+    attributes:
+      label: Sequence
+      options:
+        - label: I opened DJI Fly first, waited for the live camera feed, then closed it
+          required: true
+        - label: The iPhone is cabled to the TOP USB port of the controller
+          required: true
+        - label: I removed the aircraft serial number from everything I pasted above
+          required: true

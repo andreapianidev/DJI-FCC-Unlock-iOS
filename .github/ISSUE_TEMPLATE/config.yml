@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question, or not sure it is a bug
+    url: https://github.com/andreapianidev/DJI-FCC-Unlock-iOS/discussions
+    about: Ask in Discussions. No form to fill in, and no wrong question.
+  - name: Is my drone supported?
+    url: https://github.com/andreapianidev/DJI-FCC-Unlock-iOS#-hardware-compatibility
+    about: The compatibility table lists every model anyone has reported so far.

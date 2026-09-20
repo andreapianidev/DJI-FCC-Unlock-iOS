@@ -483,7 +483,7 @@ final class FccController {
         postLog("First bytes on the link:")
         postLog(rx.previewHex)
 
-        postLog("Census has \(frameCensus.value.count) distinct frame kinds. Dump Traffic for the full list.")
+        postLog("Census has \(frameCensus.value.count) distinct frame kinds. This line is only the count: tap Dump All Traffic to print the census itself, and include that in any report.")
         if rx.framesDecoded == 0 && rx.bytes > 0 {
             // The link is carrying data the parser cannot make sense of, which
             // is a framing problem, not an aircraft that ignored us. The head

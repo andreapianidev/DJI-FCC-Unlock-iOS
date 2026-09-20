@@ -98,6 +98,23 @@ protocol mock, an actual controller and an actual drone in the air. Three things
 One honest limit: this firmware answers no region-read command, so the app cannot
 read the mode back. The DJI Fly Transmission graph is the confirmation.
 
+## 🧩 Hardware compatibility
+
+Every pair anyone has reported, working or not. A failure is as useful as a
+success here, so both get a row.
+
+| Controller | Aircraft | FCC | Reported by | What happened |
+|---|---|---|---|---|
+| DJI RC-N3 | DJI Neo | ✅ confirmed | [@andreapianidev](https://github.com/andreapianidev) | FW v00.05.00.12. Verified on the DJI Fly Transmission graph, signal well past the 1km reference. |
+| DJI RC-N3 | DJI Mini 5 Pro | ❌ no response | [@theboyroberts](https://github.com/theboyroberts) | Link healthy, RCLink framing correct, aircraft linked, and zero acks on all six paths. Under investigation in [#5](../../issues/5). |
+| DJI RC-N1 | any | ❓ untested | | Wanted. The protocol should be identical, but nobody has run it. |
+| DJI RC-N2 | any | ❓ untested | | Wanted. |
+
+Add a row by filing a
+[hardware report](../../issues/new?template=hardware-report.yml). It takes a
+cable, five minutes and no coding, and it is the single most useful thing anyone
+can contribute to this project right now.
+
 ## 🛠️ Build and install
 
 Requirements: Xcode 26+, iOS 17+ target, an Apple ID in Xcode.
